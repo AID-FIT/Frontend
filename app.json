@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "AID-Fit",
+    "slug": "aid-fit",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/aid-fit-logo.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/aid-fit-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F9FC"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/aid-fit-logo.png",
+        "backgroundColor": "#F7F9FC"
+      }
+    }
+  }
+}

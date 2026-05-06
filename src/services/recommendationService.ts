@@ -28,7 +28,7 @@ type AgentRecommendationResponse = {
 export type RecommendationCreatePayload = {
   prompt?: string;
   query?: string;
-  image_url: string;
+  image_url?: string | null;
   user_id?: string | null;
   closet_item_id?: string | null;
   recommendation_target?: string;
@@ -69,5 +69,14 @@ export async function createRecommendation(payload: RecommendationCreatePayload)
 
 export async function getRecommendation(recommendationId: string): Promise<Recommendation> {
   const response = await apiClient.get<AgentRecommendationResponse>(`/recommendations/${recommendationId}`);
+  return mapAgentRecommendation(response.data);
+}
+
+export async function getHomeRecommendation(prompt = ''): Promise<Recommendation> {
+  const response = await apiClient.get<AgentRecommendationResponse>('/recommendations/home', {
+    params: {
+      prompt,
+    },
+  });
   return mapAgentRecommendation(response.data);
 }

@@ -11,8 +11,9 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
+  const user = useAppStore((state) => state.user);
   const hasSeenOnboardingIntro = useAppStore((state) => state.hasSeenOnboardingIntro);
-  const isOnboarded = useAppStore((state) => state.isOnboarded);
+  const shouldShowOnboarding = user?.role === 'guest';
 
   return (
     <Stack.Navigator
@@ -23,9 +24,9 @@ export function RootNavigator() {
     >
       {!isAuthenticated ? (
         <Stack.Screen name="Auth" component={AuthNavigator} />
-      ) : !hasSeenOnboardingIntro ? (
+      ) : shouldShowOnboarding && !hasSeenOnboardingIntro ? (
         <Stack.Screen name="OnboardingIntro" component={OnboardingIntroScreen} />
-      ) : !isOnboarded ? (
+      ) : shouldShowOnboarding ? (
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       ) : (
         <Stack.Screen name="Main" component={MainTabs} />

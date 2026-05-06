@@ -10,8 +10,8 @@ import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
-import { listProducts } from '../../services/productService';
-import type { Product } from '../../types/fashion';
+import { getHomeRecommendation } from '../../services/recommendationService';
+import type { Product, Recommendation } from '../../types/fashion';
 
 const categories = ['캐주얼', '여름', '미니멀', '데이트룩'];
 const heroTitle = '오늘의 코디';
@@ -58,13 +58,28 @@ export function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const loadProducts = useCallback((nextQuery = '데일리') => {
+  const loadProducts = useCallback((nextQuery = '') => {
     setIsLoading(true);
     setError('');
-    listProducts(nextQuery || '데일리')
-      .then(setProducts)
+    getHomeRecommendation(nextQuery)
+      .then((recommendation: Recommendation) => {
+        setProducts(
+          recommendation.items.map((item) => ({
+            id: item.product?.id ?? item.id,
+            brand: item.product?.brand ?? 'AID-FIT',
+            name: item.name,
+            price: item.product?.price === null || item.product?.price === undefined
+              ? '가격 미정'
+              : `${item.product.price.toLocaleString('ko-KR')}원`,
+            tags: [item.category],
+            imageTone: item.imageTone,
+            imageUrl: item.product?.imageUrl,
+            aiRecommended: true,
+          })),
+        );
+      })
       .catch(() => {
-        setError('상품 정보를 불러오지 못했어요.');
+        setError('추천 정보를 불러오지 못했어요.');
       })
       .finally(() => {
         setIsLoading(false);
@@ -72,7 +87,7 @@ export function HomeScreen() {
   }, []);
 
   useEffect(() => {
-    loadProducts('데일리');
+    loadProducts('');
   }, [loadProducts]);
 
   return (
@@ -98,7 +113,7 @@ export function HomeScreen() {
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={20} color={colors.subText} />
         <AppTextInput
-          placeholder="찾고 싶은 스타일을 검색하세요"
+          placeholder="오늘 코디에 추가로 원하는 점을 입력하세요"
           value={query}
           onChangeText={setQuery}
           onSubmitEditing={() => loadProducts(query)}

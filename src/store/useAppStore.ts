@@ -12,7 +12,7 @@ type AppState = {
   preferredStyles: string[];
   login: (accessToken: string, user: AuthUser) => void;
   completeOnboardingIntro: () => void;
-  completeOnboarding: (age: string, styles: string[]) => void;
+  completeOnboarding: (age: string, styles: string[], user?: AuthUser | null) => void;
   resetSession: () => void;
 };
 
@@ -30,15 +30,19 @@ export const useAppStore = create<AppState>((set) => ({
       accessToken,
       user,
       isAuthenticated: true,
+      isOnboarded: user.role !== 'guest',
+      hasSeenOnboardingIntro: user.role !== 'guest',
     });
   },
   completeOnboardingIntro: () => set({ hasSeenOnboardingIntro: true }),
-  completeOnboarding: (age, styles) =>
-    set({
+  completeOnboarding: (age, styles, user) =>
+    set((state) => ({
       selectedAge: age,
       preferredStyles: styles,
       isOnboarded: true,
-    }),
+      hasSeenOnboardingIntro: true,
+      user: user ?? (state.user ? { ...state.user, role: 'user' } : state.user),
+    })),
   resetSession: () => {
     setApiAccessToken(null);
     set({

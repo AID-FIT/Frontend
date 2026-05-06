@@ -11,7 +11,7 @@ import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing } from '../../constants/typography';
 import { useToggleList } from '../../hooks/useToggleList';
 import { pickImageFile, uploadImage } from '../../services/imageService';
-import { updateMyPreferences } from '../../services/userService';
+import { completeOnboarding as completeOnboardingRequest } from '../../services/userService';
 import { useAppStore } from '../../store/useAppStore';
 
 const ageOptions = ['10대', '20대', '30대', '40대 이상'];
@@ -19,7 +19,7 @@ const styleOptions = ['캐주얼', '미니멀', '스트릿', '포멀', '스포�
 
 export function OnboardingScreen() {
   const [age, setAge] = useState('20대');
-  const [uploadedCount, setUploadedCount] = useState(0);
+  const [closetImageIds, setClosetImageIds] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const { values: styles, toggle } = useToggleList(['캐주얼', '미니멀']);
@@ -35,8 +35,8 @@ export function OnboardingScreen() {
 
     setIsSaving(true);
     uploadImage(file)
-      .then(() => {
-        setUploadedCount((count) => count + 1);
+      .then((uploaded) => {
+        setClosetImageIds((ids) => [...ids, uploaded.id]);
       })
       .catch(() => {
         setError('옷장 사진 업로드에 실패했어요.');
@@ -49,12 +49,13 @@ export function OnboardingScreen() {
   const handleComplete = async () => {
     setError('');
     setIsSaving(true);
-    updateMyPreferences({
+    completeOnboardingRequest({
       age_range: age,
       styles,
+      closet_image_ids: closetImageIds,
     })
-      .then(() => {
-        completeOnboarding(age, styles);
+      .then((profile) => {
+        completeOnboarding(age, styles, user ? { ...user, role: profile.role } : null);
       })
       .catch(() => {
         setError('온보딩 정보를 저장하지 못했어요.');
@@ -104,7 +105,7 @@ export function OnboardingScreen() {
             <ImageUploadBox
               key={item}
               compact
-              title={item < uploadedCount ? '추가됨' : '사진 추가'}
+              title={item < closetImageIds.length ? '추가됨' : '사진 추가'}
               disabled={isSaving}
               onPress={handleUpload}
             />

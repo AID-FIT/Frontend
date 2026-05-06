@@ -5,6 +5,7 @@ export type AuthUser = {
   email: string | null;
   nickname: string;
   provider: string;
+  role: 'guest' | 'user' | string;
 };
 
 export type AuthResponse = {
@@ -20,4 +21,3 @@ export async function loginWithGoogleIdToken(idToken: string): Promise<AuthRespo
 
   return response.data;
 }
-

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, PanResponder, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { ProductCard } from '../../components/fashion/ProductCard';
@@ -67,6 +67,24 @@ export function HomeScreen() {
   const [hasMore, setHasMore] = useState(true);
   const requestKeyRef = useRef(0);
   const pageRef = useRef(0);
+  const listRef = useRef<FlatList<Product>>(null);
+  const scrollOffsetRef = useRef(0);
+  const dragStartOffsetRef = useRef(0);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        Math.abs(gestureState.dy) > 8 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+      onPanResponderGrant: () => {
+        dragStartOffsetRef.current = scrollOffsetRef.current;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        const nextOffset = Math.max(0, dragStartOffsetRef.current - gestureState.dy);
+        listRef.current?.scrollToOffset({ offset: nextOffset, animated: false });
+      },
+      onPanResponderTerminationRequest: () => true,
+    }),
+  ).current;
 
   const recommendationToProducts = useCallback((recommendation: Recommendation, pageIndex: number): Product[] => (
     recommendation.items.map((item, index) => ({
@@ -131,6 +149,10 @@ export function HomeScreen() {
     loadProducts(query, 'append');
   }, [hasMore, isFetchingMore, isInitialLoading, loadProducts, products.length, query]);
 
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+  }, []);
+
   useEffect(() => {
     loadProducts('', 'replace');
   }, [loadProducts]);
@@ -176,40 +198,45 @@ export function HomeScreen() {
 
   return (
     <ScreenContainer scroll={false}>
-
-      <FlatList
-        data={products}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        ListHeaderComponent={header}
-        columnWrapperStyle={styles.row}
-        contentContainerStyle={styles.grid}
-        showsVerticalScrollIndicator={false}
-        onEndReached={handleEndReached}
-        onEndReachedThreshold={0.42}
-        bounces
-        alwaysBounceVertical
-        ListEmptyComponent={
-          <Text style={styles.stateText}>
-            {isInitialLoading ? '추천 정보를 불러오는 중이에요.' : error || '표시할 추천이 없어요.'}
-          </Text>
-        }
-        ListFooterComponent={
-          products.length > 0 ? (
-            <View style={styles.footer}>
-              {isFetchingMore ? (
-                <>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                  <Text style={styles.footerText}>추가 추천을 불러오는 중이에요</Text>
-                </>
-              ) : (
-                <Text style={styles.footerText}>{hasMore ? '아래로 더 당기면 추천이 이어져요' : '오늘 추천을 모두 불러왔어요'}</Text>
-              )}
-            </View>
-          ) : null
-        }
-        renderItem={({ item }) => <ProductCard product={item} />}
-      />
+      <View style={styles.feed} {...panResponder.panHandlers}>
+        <FlatList
+          ref={listRef}
+          data={products}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          ListHeaderComponent={header}
+          columnWrapperStyle={styles.row}
+          contentContainerStyle={styles.grid}
+          showsVerticalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={0.42}
+          bounces
+          alwaysBounceVertical
+          style={styles.feedList}
+          ListEmptyComponent={
+            <Text style={styles.stateText}>
+              {isInitialLoading ? '추천 정보를 불러오는 중이에요.' : error || '표시할 추천이 없어요.'}
+            </Text>
+          }
+          ListFooterComponent={
+            products.length > 0 ? (
+              <View style={styles.footer}>
+                {isFetchingMore ? (
+                  <>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.footerText}>추가 추천을 불러오는 중이에요</Text>
+                  </>
+                ) : (
+                  <Text style={styles.footerText}>{hasMore ? '아래로 더 당기면 추천이 이어져요' : '오늘 추천을 모두 불러왔어요'}</Text>
+                )}
+              </View>
+            ) : null
+          }
+          renderItem={({ item }) => <ProductCard product={item} />}
+        />
+      </View>
     </ScreenContainer>
   );
 }
@@ -295,6 +322,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
+  },
+  feed: {
+    flex: 1,
+    minHeight: 0,
+  },
+  feedList: {
+    flex: 1,
   },
   grid: {
     paddingBottom: 124,

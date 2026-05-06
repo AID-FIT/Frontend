@@ -1,6 +1,4 @@
 import { create } from 'zustand';
-import type { StateStorage } from 'zustand/middleware';
-import { createJSONStorage, persist } from 'zustand/middleware';
 import { setApiAccessToken } from '../services/apiClient';
 import type { AuthUser } from '../services/authService';
 
@@ -19,97 +17,111 @@ type AppState = {
   resetSession: () => void;
 };
 
-const localStateStorage: StateStorage = {
-  getItem: (name) => {
-    if (typeof localStorage === 'undefined') {
-      return null;
-    }
-    return localStorage.getItem(name);
-  },
-  setItem: (name, value) => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(name, value);
-    }
-  },
-  removeItem: (name) => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(name);
-    }
-  },
+type PersistedSession = Pick<
+  AppState,
+  'isAuthenticated' | 'accessToken' | 'user' | 'hasSeenOnboardingIntro' | 'isOnboarded' | 'selectedAge' | 'preferredStyles'
+>;
+
+const SESSION_STORAGE_KEY = 'aidfit-session';
+
+const defaultSession: PersistedSession = {
+  isAuthenticated: false,
+  accessToken: null,
+  user: null,
+  hasSeenOnboardingIntro: false,
+  isOnboarded: false,
+  selectedAge: '',
+  preferredStyles: [],
 };
 
-const storage = createJSONStorage<AppState>(() => localStateStorage);
+function canUseLocalStorage() {
+  return typeof localStorage !== 'undefined';
+}
 
-export const useAppStore = create<AppState>()(
-  persist(
-    (set) => ({
-      isAuthenticated: false,
-      accessToken: null,
-      user: null,
-      hasSeenOnboardingIntro: false,
-      isOnboarded: false,
-      selectedAge: '',
-      preferredStyles: [],
-      login: (accessToken, user) => {
-        setApiAccessToken(accessToken);
-        set({
-          accessToken,
-          user,
-          isAuthenticated: true,
-          isOnboarded: user.role !== 'guest',
-          hasSeenOnboardingIntro: user.role !== 'guest',
-        });
-      },
-      syncUser: (user, profile) => {
-        setApiAccessToken(useAppStore.getState().accessToken);
-        set({
-          user,
-          isAuthenticated: true,
-          isOnboarded: user.role !== 'guest',
-          hasSeenOnboardingIntro: user.role !== 'guest',
-          selectedAge: profile?.age_range ?? useAppStore.getState().selectedAge,
-          preferredStyles: profile?.styles ?? useAppStore.getState().preferredStyles,
-        });
-      },
-      completeOnboardingIntro: () => set({ hasSeenOnboardingIntro: true }),
-      completeOnboarding: (age, styles, user) =>
-        set((state) => ({
-          selectedAge: age,
-          preferredStyles: styles,
-          isOnboarded: true,
-          hasSeenOnboardingIntro: true,
-          user: user ?? (state.user ? { ...state.user, role: 'user' } : state.user),
-        })),
-      resetSession: () => {
-        setApiAccessToken(null);
-        set({
-          isAuthenticated: false,
-          accessToken: null,
-          user: null,
-          hasSeenOnboardingIntro: false,
-          isOnboarded: false,
-          selectedAge: '',
-          preferredStyles: [],
-        });
-      },
-    }),
-    {
-      name: 'aidfit-session',
-      storage,
-      partialize: (state) => ({
-        isAuthenticated: state.isAuthenticated,
-        accessToken: state.accessToken,
-        user: state.user,
-        hasSeenOnboardingIntro: state.hasSeenOnboardingIntro,
-        isOnboarded: state.isOnboarded,
-        selectedAge: state.selectedAge,
-        preferredStyles: state.preferredStyles,
-      } as AppState),
-      onRehydrateStorage: () => (state) => {
-        if (state?.accessToken) {
-          setApiAccessToken(state.accessToken);
-        }
-      },
-    },
-  ),
-);
+function loadSession(): PersistedSession {
+  if (!canUseLocalStorage()) {
+    return defaultSession;
+  }
+
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    return raw ? { ...defaultSession, ...JSON.parse(raw) } : defaultSession;
+  } catch {
+    return defaultSession;
+  }
+}
+
+function saveSession(session: PersistedSession) {
+  if (canUseLocalStorage()) {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  }
+}
+
+function clearSession() {
+  if (canUseLocalStorage()) {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  }
+}
+
+const initialSession = loadSession();
+if (initialSession.accessToken) {
+  setApiAccessToken(initialSession.accessToken);
+}
+
+export const useAppStore = create<AppState>((set, get) => ({
+  ...initialSession,
+  login: (accessToken, user) => {
+    const session = {
+      accessToken,
+      user,
+      isAuthenticated: true,
+      isOnboarded: user.role !== 'guest',
+      hasSeenOnboardingIntro: user.role !== 'guest',
+      selectedAge: get().selectedAge,
+      preferredStyles: get().preferredStyles,
+    };
+    setApiAccessToken(accessToken);
+    saveSession(session);
+    set(session);
+  },
+  syncUser: (user, profile) => {
+    const current = get();
+    const session = {
+      accessToken: current.accessToken,
+      user,
+      isAuthenticated: true,
+      isOnboarded: user.role !== 'guest',
+      hasSeenOnboardingIntro: user.role !== 'guest',
+      selectedAge: profile?.age_range ?? current.selectedAge,
+      preferredStyles: profile?.styles ?? current.preferredStyles,
+    };
+    setApiAccessToken(current.accessToken);
+    saveSession(session);
+    set(session);
+  },
+  completeOnboardingIntro: () => {
+    const session = { ...get(), hasSeenOnboardingIntro: true };
+    saveSession(session);
+    set({ hasSeenOnboardingIntro: true });
+  },
+  completeOnboarding: (age, styles, user) => {
+    const current = get();
+    const nextUser = user ?? (current.user ? { ...current.user, role: 'user' } : current.user);
+    const session = {
+      accessToken: current.accessToken,
+      user: nextUser,
+      isAuthenticated: current.isAuthenticated,
+      selectedAge: age,
+      preferredStyles: styles,
+      isOnboarded: true,
+      hasSeenOnboardingIntro: true,
+    };
+    saveSession(session);
+    set(session);
+  },
+  resetSession: () => {
+    setApiAccessToken(null);
+    clearSession();
+    set(defaultSession);
+  },
+}));

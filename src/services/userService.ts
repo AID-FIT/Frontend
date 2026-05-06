@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import type { AuthUser } from './authService';
 
 export type UserProfileResponse = {
   id: string;
@@ -11,6 +12,16 @@ export type UserProfileResponse = {
   avoid_items: string[];
   sizes: Record<string, unknown>;
 };
+
+export function profileToAuthUser(profile: UserProfileResponse, provider = 'social'): AuthUser {
+  return {
+    id: profile.id,
+    email: profile.email,
+    nickname: profile.nickname,
+    provider,
+    role: profile.role,
+  };
+}
 
 export type OnboardingCompletePayload = UserPreferenceUpdate & {
   closet_image_ids?: string[];

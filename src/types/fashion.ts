@@ -5,6 +5,7 @@ export type Product = {
   price: string;
   tags: string[];
   imageTone: string;
+  imageUrl?: string | null;
   aiRecommended?: boolean;
 };
 
@@ -14,6 +15,12 @@ export type OutfitItem = {
   name: string;
   reason: string;
   imageTone: string;
+  product?: {
+    id: string;
+    brand: string;
+    price: number | null;
+    imageUrl: string | null;
+  } | null;
 };
 
 export type Recommendation = {

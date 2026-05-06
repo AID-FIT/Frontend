@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
@@ -9,7 +10,8 @@ import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
-import { mockProducts } from '../../mocks/products';
+import { listProducts } from '../../services/productService';
+import type { Product } from '../../types/fashion';
 
 const categories = ['캐주얼', '여름', '미니멀', '데이트룩'];
 const heroTitle = '오늘의 코디';
@@ -51,6 +53,28 @@ function GradientHeroTitle() {
 }
 
 export function HomeScreen() {
+  const [query, setQuery] = useState('');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const loadProducts = useCallback((nextQuery = '데일리') => {
+    setIsLoading(true);
+    setError('');
+    listProducts(nextQuery || '데일리')
+      .then(setProducts)
+      .catch(() => {
+        setError('상품 정보를 불러오지 못했어요.');
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    loadProducts('데일리');
+  }, [loadProducts]);
+
   return (
     <ScreenContainer scroll={false}>
       <View style={styles.header}>
@@ -75,6 +99,9 @@ export function HomeScreen() {
         <Ionicons name="search" size={20} color={colors.subText} />
         <AppTextInput
           placeholder="찾고 싶은 스타일을 검색하세요"
+          value={query}
+          onChangeText={setQuery}
+          onSubmitEditing={() => loadProducts(query)}
           style={styles.searchInput}
         />
       </View>
@@ -86,12 +113,17 @@ export function HomeScreen() {
       </View>
 
       <FlatList
-        data={mockProducts}
+        data={products}
         keyExtractor={(item) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.row}
         contentContainerStyle={styles.grid}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <Text style={styles.stateText}>
+            {isLoading ? '상품 정보를 불러오는 중이에요.' : error || '표시할 상품이 없어요.'}
+          </Text>
+        }
         renderItem={({ item }) => <ProductCard product={item} />}
       />
     </ScreenContainer>
@@ -186,5 +218,14 @@ const styles = StyleSheet.create({
   row: {
     gap: spacing.md,
     marginBottom: spacing.md,
+  },
+  stateText: {
+    color: colors.subText,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    paddingVertical: spacing.xl,
+    fontFamily: fontFamily.medium,
+    fontWeight: fontWeight.medium,
   },
 });

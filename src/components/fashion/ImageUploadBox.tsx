@@ -9,15 +9,28 @@ type ImageUploadBoxProps = {
   title?: string;
   description?: string;
   compact?: boolean;
+  disabled?: boolean;
+  onPress?: () => void;
 };
 
 export function ImageUploadBox({
   title = '사진 추가',
   description = '옷 사진을 올려주세요',
   compact = false,
+  disabled = false,
+  onPress,
 }: ImageUploadBoxProps) {
   return (
-    <Pressable style={[styles.box, compact && styles.compact]}>
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.box,
+        compact && styles.compact,
+        pressed && !disabled && styles.pressed,
+        disabled && styles.disabled,
+      ]}
+    >
       <View style={styles.iconWrap}>
         <Ionicons name="camera-outline" size={compact ? 18 : 26} color={colors.primary} />
       </View>
@@ -39,6 +52,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.xl,
     gap: spacing.sm,
+  },
+  pressed: {
+    opacity: 0.82,
+  },
+  disabled: {
+    opacity: 0.5,
   },
   compact: {
     minHeight: 102,

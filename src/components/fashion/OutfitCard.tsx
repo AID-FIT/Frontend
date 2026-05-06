@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
 import { shadows } from '../../constants/shadows';
@@ -14,9 +14,13 @@ type OutfitCardProps = {
 export function OutfitCard({ item }: OutfitCardProps) {
   return (
     <View style={styles.card}>
-      <View style={[styles.image, { backgroundColor: item.imageTone }]}>
-        <Ionicons name="shirt-outline" size={28} color={colors.primary} />
-      </View>
+      {item.product?.imageUrl ? (
+        <Image source={{ uri: item.product.imageUrl }} style={styles.image} resizeMode="cover" />
+      ) : (
+        <View style={[styles.image, { backgroundColor: item.imageTone }]}>
+          <Ionicons name="shirt-outline" size={28} color={colors.primary} />
+        </View>
+      )}
       <View style={styles.body}>
         <Text style={styles.category}>{item.category}</Text>
         <Text style={styles.name}>{item.name}</Text>

@@ -1,10 +1,13 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
+import * as WebBrowser from 'expo-web-browser';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { colors } from './src/constants/colors';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function App() {
   const [fontsLoaded] = useFonts({

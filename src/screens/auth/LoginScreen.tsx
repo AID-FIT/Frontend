@@ -1,25 +1,46 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import axios from 'axios';
+import * as Google from 'expo-auth-session/providers/google';
 import { AppButton } from '../../components/common/AppButton';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
+import { env } from '../../config/env';
 import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
 import { shadows } from '../../constants/shadows';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
+import { loginWithGoogleIdToken } from '../../services/authService';
 import { useAppStore } from '../../store/useAppStore';
 
 export function LoginScreen() {
   const login = useAppStore((state) => state.login);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
   const indicator = useRef(new Animated.Value(0)).current;
-  const titleText = '내 스타일을 가볍고\n빠르게 완성해요';
+  const titleText = '내 스타일을 \n가볍고 빠르게,\nAID-FIT.';
   const [typedTitle, setTypedTitle] = useState('');
   const titleIndex = useRef(0);
   const titleDirection = useRef<1 | -1>(1);
   const titlePause = useRef(0);
-  const [firstTitleLine = '', secondTitleLine = ''] = typedTitle.split('\n');
-  const isSecondLineActive = typedTitle.includes('\n');
+  const titleLines = typedTitle.split('\n');
+  const titleTemplateLines = titleText.split('\n');
+  const activeTitleLineIndex = titleLines.length - 1;
+  const hasGoogleWebClientId = Boolean(env.google.webClientId);
+  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest(
+    {
+      webClientId: env.google.webClientId,
+      iosClientId: env.google.iosClientId,
+      androidClientId: env.google.androidClientId,
+      scopes: ['openid', 'profile', 'email'],
+      selectAccount: true,
+    },
+    {
+      scheme: 'aidfit',
+      path: 'auth/google',
+    },
+  );
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -82,6 +103,67 @@ export function LoginScreen() {
     return () => clearInterval(timer);
   }, [titleText]);
 
+  useEffect(() => {
+    if (!googleResponse) {
+      return;
+    }
+
+    if (googleResponse.type === 'dismiss' || googleResponse.type === 'cancel') {
+      setIsGoogleLoading(false);
+      return;
+    }
+
+    if (googleResponse.type !== 'success') {
+      setAuthError('Google 로그인을 완료하지 못했어요. 다시 시도해 주세요.');
+      setIsGoogleLoading(false);
+      return;
+    }
+
+    const idToken = googleResponse.params.id_token;
+    if (!idToken) {
+      setAuthError('Google 인증 토큰을 받지 못했어요.');
+      setIsGoogleLoading(false);
+      return;
+    }
+
+    loginWithGoogleIdToken(idToken)
+      .then((auth) => {
+        login(auth.access_token, auth.user);
+      })
+      .catch((error: unknown) => {
+        if (axios.isAxiosError(error)) {
+          const detail = error.response?.data?.detail;
+          const message = typeof detail === 'string' ? detail : error.message;
+          setAuthError(`백엔드 로그인 연동 실패: ${message}`);
+          return;
+        }
+
+        setAuthError('백엔드 로그인 연동에 실패했어요.');
+      })
+      .finally(() => {
+        setIsGoogleLoading(false);
+      });
+  }, [googleResponse, login]);
+
+  const handleGoogleLogin = () => {
+    setAuthError('');
+
+    if (!hasGoogleWebClientId) {
+      setAuthError('Google Web Client ID가 설정되지 않았어요.');
+      return;
+    }
+
+    setIsGoogleLoading(true);
+    promptGoogleAsync().catch(() => {
+      setAuthError('Google 로그인 창을 열지 못했어요.');
+      setIsGoogleLoading(false);
+    });
+  };
+
+  const handleAppleLogin = () => {
+    setAuthError('Apple 로그인은 Google 연동 확인 후 연결할 예정이에요.');
+  };
+
   const activeIconStyle = (index: number) => {
     const translateOutput =
       index === 0 ? [-9, 0, 0, -9] : index === 1 ? [0, -9, 0, 0] : [0, 0, -9, 0];
@@ -116,17 +198,24 @@ export function LoginScreen() {
       <View style={styles.wrap}>
         <View style={styles.hero}>
           <View style={styles.titleWrap}>
-            <Text style={styles.title}>
-              {firstTitleLine}
-              {!isSecondLineActive ? <Text style={styles.cursor}>|</Text> : null}
-            </Text>
-            <View style={styles.titleRightSlot}>
-              <Text style={[styles.title, styles.titleGhost]}>빠르게 완성해요|</Text>
-              <Text style={[styles.title, styles.titleOverlay]}>
-                {secondTitleLine}
-                {isSecondLineActive ? <Text style={styles.cursor}>|</Text> : null}
-              </Text>
-            </View>
+            {titleTemplateLines.map((line, index) =>
+              index === 0 ? (
+                <View key={index} style={[styles.titleLineSlot, styles.titleLeftSlot]}>
+                  <Text style={styles.title}>
+                    {titleLines[index] ?? ''}
+                    {activeTitleLineIndex === index ? <Text style={styles.cursor}>|</Text> : null}
+                  </Text>
+                </View>
+              ) : (
+                <View key={index} style={[styles.titleLineSlot, styles.titleLeftSlot]}>
+                  <Text style={[styles.title, styles.titleGhost]}>{line}|</Text>
+                  <Text style={[styles.title, styles.titleOverlay]}>
+                    {titleLines[index] ?? ''}
+                    {activeTitleLineIndex === index ? <Text style={styles.cursor}>|</Text> : null}
+                  </Text>
+                </View>
+              ),
+            )}
           </View>
           <View style={styles.motionArea}>
             <View style={styles.iconRow}>
@@ -155,17 +244,19 @@ export function LoginScreen() {
 
         <View style={styles.buttons}>
           <AppButton
-            title="Google로 시작하기"
+            title={isGoogleLoading ? 'Google 로그인 중' : 'Google로 시작하기'}
             variant="secondary"
-            onPress={login}
+            onPress={handleGoogleLogin}
+            disabled={!googleRequest || isGoogleLoading}
             icon={<Text style={styles.googleIcon}>G</Text>}
           />
           <AppButton
             title="Apple로 시작하기"
             variant="dark"
-            onPress={login}
+            onPress={handleAppleLogin}
             icon={<Ionicons name="logo-apple" size={20} color={colors.white} />}
           />
+          {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
           <Text style={styles.terms}>로그인하면 약관에 동의한 것으로 간주됩니다.</Text>
         </View>
       </View>
@@ -188,7 +279,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
   },
   titleWrap: {
-    minHeight: 114,
+    minHeight: 216,
   },
   title: {
     color: colors.text,
@@ -199,9 +290,12 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.heavy,
     fontWeight: fontWeight.heavy,
   },
-  titleRightSlot: {
-    alignSelf: 'flex-end',
+  titleLeftSlot: {
+    alignSelf: 'flex-start',
     position: 'relative',
+  },
+  titleLineSlot: {
+    minHeight: 54,
   },
   titleGhost: {
     opacity: 0,
@@ -263,6 +357,15 @@ const styles = StyleSheet.create({
   },
   terms: {
     color: colors.subText,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    fontFamily: fontFamily.medium,
+    fontWeight: fontWeight.medium,
+    paddingHorizontal: spacing.md,
+  },
+  errorText: {
+    color: colors.danger,
     fontSize: 13,
     lineHeight: 19,
     textAlign: 'center',

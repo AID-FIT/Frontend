@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { RouteProp } from '@react-navigation/native';
 import { useRoute } from '@react-navigation/native';
 import { StyleSheet, Text, View } from 'react-native';
@@ -9,16 +10,41 @@ import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { colors } from '../../constants/colors';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
-import { mockRecommendations } from '../../mocks/recommendations';
+import { getRecommendation } from '../../services/recommendationService';
+import type { Recommendation } from '../../types/fashion';
 import type { RecommendStackParamList } from '../../types/navigation';
 
 type ResultRoute = RouteProp<RecommendStackParamList, 'RecommendationResult'>;
 
 export function RecommendationResultScreen() {
   const route = useRoute<ResultRoute>();
-  const recommendation =
-    mockRecommendations.find((item) => item.id === route.params.recommendationId) ??
-    mockRecommendations[0];
+  const [recommendation, setRecommendation] = useState<Recommendation | null>(
+    route.params.recommendation ?? null,
+  );
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (recommendation) {
+      return;
+    }
+
+    getRecommendation(route.params.recommendationId)
+      .then(setRecommendation)
+      .catch(() => {
+        setError('추천 결과를 불러오지 못했어요.');
+      });
+  }, [recommendation, route.params.recommendationId]);
+
+  if (!recommendation) {
+    return (
+      <ScreenContainer>
+        <View style={styles.header}>
+          <AIRecommendBadge />
+          <Text style={styles.title}>{error || '추천 결과를 불러오는 중이에요'}</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   return (
     <ScreenContainer>

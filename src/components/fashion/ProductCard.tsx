@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
@@ -16,9 +16,13 @@ export function ProductCard({ product }: ProductCardProps) {
     <View style={styles.card}>
       <View style={[styles.image, { backgroundColor: product.imageTone }]}>
         {product.aiRecommended ? <AIRecommendBadge /> : null}
-        <View style={styles.imageShape}>
-          <Ionicons name="shirt-outline" size={38} color={colors.primary} />
-        </View>
+        {product.imageUrl ? (
+          <Image source={{ uri: product.imageUrl }} style={styles.productImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.imageShape}>
+            <Ionicons name="shirt-outline" size={38} color={colors.primary} />
+          </View>
+        )}
       </View>
       <View style={styles.body}>
         <Text style={styles.name} numberOfLines={2}>
@@ -54,6 +58,15 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: 72,
     height: 72,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceFilter,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  productImage: {
+    alignSelf: 'center',
+    width: 96,
+    height: 96,
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceFilter,
   },

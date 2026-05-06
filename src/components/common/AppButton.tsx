@@ -13,6 +13,7 @@ type AppButtonProps = {
   onPress: () => void;
   variant?: AppButtonVariant;
   icon?: ReactNode;
+  disabled?: boolean;
 };
 
 export function AppButton({
@@ -20,14 +21,17 @@ export function AppButton({
   onPress,
   variant = 'primary',
   icon,
+  disabled = false,
 }: AppButtonProps) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.base,
         styles[variant],
-        pressed && styles.pressed,
+        pressed && !disabled && styles.pressed,
+        disabled && styles.disabled,
       ]}
     >
       {icon ? <View style={styles.icon}>{icon}</View> : null}
@@ -89,5 +93,8 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.82,
     transform: [{ scale: 0.99 }],
+  },
+  disabled: {
+    opacity: 0.48,
   },
 });

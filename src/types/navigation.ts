@@ -1,4 +1,5 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { Recommendation } from './fashion';
 
 export type AuthStackParamList = {
   Login: undefined;
@@ -8,6 +9,7 @@ export type RecommendStackParamList = {
   StyleRecommend: undefined;
   RecommendationResult: {
     recommendationId: string;
+    recommendation?: Recommendation;
   };
 };
 

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { ProductCard } from '../../components/fashion/ProductCard';
@@ -16,6 +16,12 @@ import type { Product, Recommendation } from '../../types/fashion';
 const categories = ['캐주얼', '여름', '미니멀', '데이트룩'];
 const heroTitle = '오늘의 코디';
 const titleGradient = ['#0B1F3B', '#2EC4B6'];
+const pagePrompts = [
+  '첫 화면에 어울리는 핵심 추천을 보여줘',
+  '앞 추천과 겹치지 않게 다른 분위기의 하의를 더 추천해줘',
+  '신발과 가방까지 포함해서 추가 추천을 보여줘',
+  '계절감과 색 조합을 다르게 해서 더 추천해줘',
+];
 
 function hexToRgb(hex: string) {
   const value = hex.replace('#', '');
@@ -55,43 +61,82 @@ function GradientHeroTitle() {
 export function HomeScreen() {
   const [query, setQuery] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [error, setError] = useState('');
+  const [hasMore, setHasMore] = useState(true);
+  const requestKeyRef = useRef(0);
+  const pageRef = useRef(0);
 
-  const loadProducts = useCallback((nextQuery = '') => {
-    setIsLoading(true);
+  const recommendationToProducts = useCallback((recommendation: Recommendation, pageIndex: number): Product[] => (
+    recommendation.items.map((item, index) => ({
+      id: `${item.product?.id ?? item.id}-${pageIndex}-${index}`,
+      brand: item.product?.brand ?? 'AID-FIT',
+      name: item.name,
+      price: item.product?.price === null || item.product?.price === undefined
+        ? '가격 미정'
+        : `${item.product.price.toLocaleString('ko-KR')}원`,
+      tags: [item.category],
+      imageTone: item.imageTone,
+      imageUrl: item.product?.imageUrl,
+      aiRecommended: true,
+    }))
+  ), []);
+
+  const buildPagedPrompt = useCallback((baseQuery: string, pageIndex: number) => {
+    const extra = pagePrompts[pageIndex % pagePrompts.length];
+    return [baseQuery.trim(), extra, `${pageIndex + 1}번째 추천 묶음`].filter(Boolean).join(' / ');
+  }, []);
+
+  const loadProducts = useCallback((nextQuery = '', mode: 'replace' | 'append' = 'replace') => {
+    const pageIndex = mode === 'replace' ? 0 : pageRef.current + 1;
+    const requestKey = requestKeyRef.current + 1;
+    requestKeyRef.current = requestKey;
+    if (mode === 'replace') {
+      setIsInitialLoading(true);
+      setHasMore(true);
+    } else {
+      setIsFetchingMore(true);
+    }
     setError('');
-    getHomeRecommendation(nextQuery)
+    getHomeRecommendation(buildPagedPrompt(nextQuery, pageIndex))
       .then((recommendation: Recommendation) => {
-        setProducts(
-          recommendation.items.map((item) => ({
-            id: item.product?.id ?? item.id,
-            brand: item.product?.brand ?? 'AID-FIT',
-            name: item.name,
-            price: item.product?.price === null || item.product?.price === undefined
-              ? '가격 미정'
-              : `${item.product.price.toLocaleString('ko-KR')}원`,
-            tags: [item.category],
-            imageTone: item.imageTone,
-            imageUrl: item.product?.imageUrl,
-            aiRecommended: true,
-          })),
-        );
+        if (requestKeyRef.current !== requestKey) {
+          return;
+        }
+
+        const nextProducts = recommendationToProducts(recommendation, pageIndex);
+        setProducts((current) => (mode === 'replace' ? nextProducts : [...current, ...nextProducts]));
+        pageRef.current = pageIndex;
+        setHasMore(nextProducts.length > 0);
       })
       .catch(() => {
         setError('추천 정보를 불러오지 못했어요.');
       })
       .finally(() => {
-        setIsLoading(false);
+        if (requestKeyRef.current !== requestKey) {
+          return;
+        }
+
+        setIsInitialLoading(false);
+        setIsFetchingMore(false);
       });
-  }, []);
+  }, [buildPagedPrompt, recommendationToProducts]);
+
+  const handleEndReached = useCallback(() => {
+    if (isInitialLoading || isFetchingMore || !hasMore || products.length === 0) {
+      return;
+    }
+
+    loadProducts(query, 'append');
+  }, [hasMore, isFetchingMore, isInitialLoading, loadProducts, products.length, query]);
 
   useEffect(() => {
-    loadProducts('');
+    loadProducts('', 'replace');
   }, [loadProducts]);
 
-  return (
-    <ScreenContainer scroll={false}>
+  const header = (
+    <>
       <View style={styles.header}>
         <Text style={styles.greeting}>최신 코디 정보를 가져왔어요</Text>
       </View>
@@ -116,7 +161,7 @@ export function HomeScreen() {
           placeholder="오늘 코디에 추가로 원하는 점을 입력하세요"
           value={query}
           onChangeText={setQuery}
-          onSubmitEditing={() => loadProducts(query)}
+          onSubmitEditing={() => loadProducts(query, 'replace')}
           style={styles.searchInput}
         />
       </View>
@@ -126,18 +171,42 @@ export function HomeScreen() {
           <Chip key={category} label={category} selected={index === 0} />
         ))}
       </View>
+    </>
+  );
+
+  return (
+    <ScreenContainer scroll={false}>
 
       <FlatList
         data={products}
         keyExtractor={(item) => item.id}
         numColumns={2}
+        ListHeaderComponent={header}
         columnWrapperStyle={styles.row}
         contentContainerStyle={styles.grid}
         showsVerticalScrollIndicator={false}
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.42}
+        bounces
+        alwaysBounceVertical
         ListEmptyComponent={
           <Text style={styles.stateText}>
-            {isLoading ? '상품 정보를 불러오는 중이에요.' : error || '표시할 상품이 없어요.'}
+            {isInitialLoading ? '추천 정보를 불러오는 중이에요.' : error || '표시할 추천이 없어요.'}
           </Text>
+        }
+        ListFooterComponent={
+          products.length > 0 ? (
+            <View style={styles.footer}>
+              {isFetchingMore ? (
+                <>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.footerText}>추가 추천을 불러오는 중이에요</Text>
+                </>
+              ) : (
+                <Text style={styles.footerText}>{hasMore ? '아래로 더 당기면 추천이 이어져요' : '오늘 추천을 모두 불러왔어요'}</Text>
+              )}
+            </View>
+          ) : null
         }
         renderItem={({ item }) => <ProductCard product={item} />}
       />
@@ -228,7 +297,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   grid: {
-    paddingBottom: 112,
+    paddingBottom: 124,
   },
   row: {
     gap: spacing.md,
@@ -240,6 +309,20 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
     paddingVertical: spacing.xl,
+    fontFamily: fontFamily.medium,
+    fontWeight: fontWeight.medium,
+  },
+  footer: {
+    minHeight: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  footerText: {
+    color: colors.subText,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
     fontFamily: fontFamily.medium,
     fontWeight: fontWeight.medium,
   },

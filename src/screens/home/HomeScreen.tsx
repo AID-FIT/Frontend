@@ -385,11 +385,6 @@ export function HomeScreen() {
         <View style={styles.heroTop}>
           <View style={styles.heroText}>
             <GradientHeroTitle />
-            <View style={styles.heroDots}>
-              <View style={styles.heroDot} />
-              <View style={styles.heroDotMuted} />
-              <View style={styles.heroDotMuted} />
-            </View>
           </View>
           <View style={styles.heroIcon}>
             <Ionicons name="shirt-outline" size={28} color={colors.accentTeal} />
@@ -591,23 +586,6 @@ const styles = StyleSheet.create({
     letterSpacing: letterSpacing.heading,
     fontFamily: fontFamily.heavy,
     fontWeight: fontWeight.heavy,
-  },
-  heroDots: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  heroDot: {
-    width: 28,
-    height: 8,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentTeal,
-  },
-  heroDotMuted: {
-    width: 8,
-    height: 8,
-    borderRadius: radius.pill,
-    backgroundColor: colors.ashLight,
   },
   heroIcon: {
     width: 48,

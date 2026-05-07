@@ -1,5 +1,6 @@
 import type { Product } from '../types/fashion';
 import { apiClient } from './apiClient';
+import { normalizeAssetUrl } from '../utils/url';
 
 type ProductResponse = {
   id: string;
@@ -27,7 +28,7 @@ export function mapProduct(product: ProductResponse, aiRecommended = false): Pro
     price: formatPrice(product.price),
     tags: product.tags,
     imageTone: '#f5f7fa',
-    imageUrl: product.image_url,
+    imageUrl: normalizeAssetUrl(product.image_url),
     aiRecommended,
   };
 }

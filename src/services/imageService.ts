@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { normalizeAssetUrl } from '../utils/url';
 
 export type UploadedImage = {
   id: string;
@@ -8,7 +9,10 @@ export type UploadedImage = {
 
 export async function listImages(): Promise<UploadedImage[]> {
   const response = await apiClient.get<UploadedImage[]>('/images');
-  return response.data;
+  return response.data.map((image) => ({
+    ...image,
+    image_url: normalizeAssetUrl(image.image_url) ?? image.image_url,
+  }));
 }
 
 export async function uploadImage(file: File): Promise<UploadedImage> {
@@ -21,7 +25,10 @@ export async function uploadImage(file: File): Promise<UploadedImage> {
     },
   });
 
-  return response.data;
+  return {
+    ...response.data,
+    image_url: normalizeAssetUrl(response.data.image_url) ?? response.data.image_url,
+  };
 }
 
 export function pickImageFile(): Promise<File | null> {

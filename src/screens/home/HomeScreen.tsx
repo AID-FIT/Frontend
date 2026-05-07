@@ -369,84 +369,82 @@ export function HomeScreen() {
       </View>
 
       <LinearGradient colors={[colors.navySoft, colors.surfaceFilter]} style={styles.heroCard}>
-        <View style={styles.heroText}>
-          <GradientHeroTitle />
-          <View style={styles.heroDots}>
-            <View style={styles.heroDot} />
-            <View style={styles.heroDotMuted} />
-            <View style={styles.heroDotMuted} />
-          </View>
-        </View>
-        <View style={styles.heroIcon}>
-          <Ionicons name="shirt-outline" size={28} color={colors.accentTeal} />
-        </View>
-      </LinearGradient>
-
-      {outfitSets.length > 0 ? (
-        <View style={styles.outfitCard}>
-          <View style={styles.outfitHeader}>
-            <View>
-              <Text style={styles.outfitEyebrow}>AI 추천 세트</Text>
-              <Text style={styles.outfitTitle}>오늘의 추천 코디</Text>
+        <View style={styles.heroTop}>
+          <View style={styles.heroText}>
+            <GradientHeroTitle />
+            <View style={styles.heroDots}>
+              <View style={styles.heroDot} />
+              <View style={styles.heroDotMuted} />
+              <View style={styles.heroDotMuted} />
             </View>
-            <Ionicons name="sparkles-outline" size={20} color={colors.accentTeal} />
           </View>
-          <View style={styles.outfitCarousel} onLayout={handleOutfitCarouselLayout}>
-            <FlatList
-              data={outfitSets}
-              horizontal
-              pagingEnabled
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={false}
-              keyExtractor={(item) => item.id}
-              onMomentumScrollEnd={handleOutfitMomentumEnd}
-              renderItem={({ item: outfitSet }) => (
-                <View style={[styles.outfitPage, { width: outfitCarouselWidth || 1 }]}>
-                  {outfitSet.summary ? (
-                    <Text style={styles.outfitSummary} numberOfLines={3}>
-                      {outfitSet.summary}
-                    </Text>
-                  ) : null}
-                  <View style={styles.outfitItems}>
-                    {outfitSet.items.map((item) => (
-                      <View key={item.id} style={styles.outfitItem}>
-                        <View style={styles.outfitImage}>
-                          {item.product?.imageUrl ? (
-                            <Image source={{ uri: item.product.imageUrl }} style={styles.outfitProductImage} resizeMode="cover" />
-                          ) : (
-                            <Ionicons name="shirt-outline" size={24} color={colors.primary} />
-                          )}
-                        </View>
-                        <View style={styles.outfitInfo}>
-                          <Text style={styles.outfitCategory}>{getOutfitCategoryLabel(item.category)}</Text>
-                          <Text style={styles.outfitBrand} numberOfLines={1}>{item.product?.brand ?? 'AID-FIT'}</Text>
-                          <Text style={styles.outfitName} numberOfLines={2}>{item.name}</Text>
-                          <Text style={styles.outfitPrice}>
-                            {item.product?.price === null || item.product?.price === undefined
-                              ? '가격 미정'
-                              : `${item.product.price.toLocaleString('ko-KR')}원`}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-            />
-          </View>
-          <View style={styles.outfitPagination}>
-            {outfitSets.map((item, index) => (
-              <View
-                key={item.id}
-                style={[
-                  styles.outfitPaginationDot,
-                  index === activeOutfitIndex ? styles.outfitPaginationDotActive : null,
-                ]}
-              />
-            ))}
+          <View style={styles.heroIcon}>
+            <Ionicons name="shirt-outline" size={28} color={colors.accentTeal} />
           </View>
         </View>
-      ) : null}
+        {outfitSets.length > 0 ? (
+          <View style={styles.outfitInHero}>
+            <View style={styles.outfitHeader}>
+              <Text style={styles.outfitEyebrow}>AI 추천 세트</Text>
+              <Ionicons name="sparkles-outline" size={18} color={colors.accentTeal} />
+            </View>
+            <View style={styles.outfitCarousel} onLayout={handleOutfitCarouselLayout}>
+              <FlatList
+                data={outfitSets}
+                horizontal
+                pagingEnabled
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.id}
+                onMomentumScrollEnd={handleOutfitMomentumEnd}
+                renderItem={({ item: outfitSet }) => (
+                  <View style={[styles.outfitPage, { width: outfitCarouselWidth || 1 }]}>
+                    {outfitSet.summary ? (
+                      <Text style={styles.outfitSummary} numberOfLines={2}>
+                        {outfitSet.summary}
+                      </Text>
+                    ) : null}
+                    <View style={styles.outfitItems}>
+                      {outfitSet.items.map((item) => (
+                        <View key={item.id} style={styles.outfitItem}>
+                          <View style={styles.outfitImage}>
+                            {item.product?.imageUrl ? (
+                              <Image source={{ uri: item.product.imageUrl }} style={styles.outfitProductImage} resizeMode="cover" />
+                            ) : (
+                              <Ionicons name="shirt-outline" size={24} color={colors.primary} />
+                            )}
+                          </View>
+                          <View style={styles.outfitInfo}>
+                            <Text style={styles.outfitCategory}>{getOutfitCategoryLabel(item.category)}</Text>
+                            <Text style={styles.outfitBrand} numberOfLines={1}>{item.product?.brand ?? 'AID-FIT'}</Text>
+                            <Text style={styles.outfitName} numberOfLines={2}>{item.name}</Text>
+                            <Text style={styles.outfitPrice}>
+                              {item.product?.price === null || item.product?.price === undefined
+                                ? '가격 미정'
+                                : `${item.product.price.toLocaleString('ko-KR')}원`}
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              />
+            </View>
+            <View style={styles.outfitPagination}>
+              {outfitSets.map((item, index) => (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.outfitPaginationDot,
+                    index === activeOutfitIndex ? styles.outfitPaginationDotActive : null,
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
+      </LinearGradient>
 
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={20} color={colors.subText} />
@@ -557,11 +555,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing.xl,
     marginBottom: spacing.lg,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.hairlineLight,
+    gap: spacing.lg,
+  },
+  heroTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.lg,
   },
   heroText: {
     flex: 1,
@@ -600,13 +602,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  outfitCard: {
+  outfitInHero: {
     backgroundColor: colors.white,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.hairlineLight,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
+    borderRadius: radius.lg,
+    padding: spacing.md,
     gap: spacing.md,
   },
   outfitHeader: {
@@ -622,13 +621,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.semibold,
     fontWeight: fontWeight.semibold,
   },
-  outfitTitle: {
-    color: colors.text,
-    fontSize: 20,
-    lineHeight: 26,
-    fontFamily: fontFamily.heavy,
-    fontWeight: fontWeight.heavy,
-  },
   outfitSummary: {
     color: colors.subText,
     fontSize: 13,
@@ -640,7 +632,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   outfitCarousel: {
-    minHeight: 548,
+    minHeight: 480,
   },
   outfitPage: {
     gap: spacing.md,

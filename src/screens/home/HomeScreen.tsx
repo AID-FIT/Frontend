@@ -14,7 +14,8 @@ import { getHomeRecommendation } from '../../services/recommendationService';
 import type { Product, Recommendation } from '../../types/fashion';
 
 const categories = ['캐주얼', '여름', '미니멀', '데이트룩'];
-const heroTitle = '오늘의 코디';
+const defaultHeroTitle = '오늘의 코디';
+const defaultHeroDescription = '최신 코디 정보를 가져왔어요';
 const titleGradient = ['#0B1F3B', '#2EC4B6'];
 const endReachedMessage = '모든 추천 아이템을 보았어요! 아래로 당겨 새롭게 아이템을 추천해드릴게요!';
 const edgeThreshold = 24;
@@ -40,11 +41,11 @@ function interpolateHexColor(from: string, to: string, progress: number) {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-function GradientHeroTitle() {
-  const letters = Array.from(heroTitle);
+function GradientHeroTitle({ title }: { title: string }) {
+  const letters = Array.from(title);
 
   return (
-    <Text style={styles.heroTitle} accessibilityLabel={heroTitle}>
+    <Text style={styles.heroTitle} accessibilityLabel={title} numberOfLines={2}>
       {letters.map((letter, index) => {
         const progress = letters.length <= 1 ? 0 : index / (letters.length - 1);
         return (
@@ -61,6 +62,8 @@ export function HomeScreen() {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(categories[0]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [heroTitleText, setHeroTitleText] = useState(defaultHeroTitle);
+  const [heroDescription, setHeroDescription] = useState(defaultHeroDescription);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshingRecommendations, setIsRefreshingRecommendations] = useState(false);
   const [isBottomPullArmed, setIsBottomPullArmed] = useState(false);
@@ -117,6 +120,8 @@ export function HomeScreen() {
 
         const nextProducts = recommendationToProducts(recommendation, refreshSeed);
         setProducts(nextProducts);
+        setHeroTitleText(recommendation.title || defaultHeroTitle);
+        setHeroDescription(recommendation.summary || defaultHeroDescription);
         refreshSeedRef.current = refreshSeed;
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
       })
@@ -282,12 +287,12 @@ export function HomeScreen() {
   const header = (
     <>
       <View style={styles.header}>
-        <Text style={styles.greeting}>최신 코디 정보를 가져왔어요</Text>
+        <Text style={styles.greeting} numberOfLines={3}>{heroDescription}</Text>
       </View>
 
       <LinearGradient colors={[colors.navySoft, colors.surfaceFilter]} style={styles.heroCard}>
         <View style={styles.heroText}>
-          <GradientHeroTitle />
+          <GradientHeroTitle title={heroTitleText} />
           <View style={styles.heroDots}>
             <View style={styles.heroDot} />
             <View style={styles.heroDotMuted} />
@@ -368,7 +373,7 @@ export function HomeScreen() {
                 ) : isBottomPullArmed ? (
                   <>
                     <ActivityIndicator size="small" color={colors.primary} />
-                    <Text style={styles.footerText}>놓으면 새 추천을 불러와요</Text>
+                    <Text style={styles.footerText}>새 추천을 불러오는 중이에요</Text>
                   </>
                 ) : cooldownRemainingSeconds > 0 ? (
                   <Text style={styles.footerText}>

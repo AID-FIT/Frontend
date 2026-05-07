@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ActivityIndicator, FlatList, Image, RefreshControl, StyleSheet, Text, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { ProductCard } from '../../components/fashion/ProductCard';
@@ -22,6 +22,7 @@ const bottomPullThreshold = 36;
 const refreshLimitPerSession = 5;
 const refreshCooldownMs = 5 * 60 * 1000;
 const outfitSetPreviewCount = 3;
+const outfitLoopMultiplier = 21;
 const outfitCategoryOrder = ['cap', 'hat', 'top', 'shirt', 'outer', 'pants', 'bottom', 'shoes', 'bag', 'accessory'];
 const outfitCategoryLabels: Record<string, string> = {
   cap: '모자',
@@ -40,6 +41,11 @@ type OutfitSet = {
   id: string;
   summary: string;
   items: OutfitItem[];
+};
+
+type LoopOutfitSet = OutfitSet & {
+  loopKey: string;
+  sourceIndex: number;
 };
 
 function hexToRgb(hex: string) {
@@ -94,6 +100,7 @@ export function HomeScreen() {
   const [outfitSets, setOutfitSets] = useState<OutfitSet[]>([]);
   const [activeOutfitIndex, setActiveOutfitIndex] = useState(0);
   const [outfitCarouselWidth, setOutfitCarouselWidth] = useState(0);
+  const [isOutfitExpanded, setIsOutfitExpanded] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshingRecommendations, setIsRefreshingRecommendations] = useState(false);
   const [isBottomPullArmed, setIsBottomPullArmed] = useState(false);
@@ -103,6 +110,7 @@ export function HomeScreen() {
   const requestKeyRef = useRef(0);
   const refreshSeedRef = useRef(0);
   const listRef = useRef<FlatList<Product>>(null);
+  const outfitCarouselRef = useRef<FlatList<LoopOutfitSet>>(null);
   const scrollOffsetRef = useRef(0);
   const distanceFromBottomRef = useRef(Number.POSITIVE_INFINITY);
   const refreshCountRef = useRef(0);
@@ -115,6 +123,16 @@ export function HomeScreen() {
     isBottomPullArmedRef.current = nextValue;
     setIsBottomPullArmed(nextValue);
   }, []);
+
+  const loopedOutfitSets = useMemo<LoopOutfitSet[]>(() => (
+    Array.from({ length: outfitLoopMultiplier }).flatMap((_, loopIndex) => (
+      outfitSets.map((outfitSet, sourceIndex) => ({
+        ...outfitSet,
+        sourceIndex,
+        loopKey: `${outfitSet.id}-${loopIndex}`,
+      }))
+    ))
+  ), [outfitSets]);
 
   const recommendationToProducts = useCallback((recommendation: Recommendation, refreshSeed: number): Product[] => (
     recommendation.items.map((item, index) => ({
@@ -147,6 +165,7 @@ export function HomeScreen() {
     const firstSet = recommendationToOutfitSet(firstRecommendation, baseSeed);
     setOutfitSets([firstSet]);
     setActiveOutfitIndex(0);
+    setIsOutfitExpanded(false);
 
     const previewSeeds = Array.from({ length: outfitSetPreviewCount - 1 }, (_, index) => baseSeed + index + 1);
     Promise.all(
@@ -307,27 +326,46 @@ export function HomeScreen() {
     setOutfitCarouselWidth(event.nativeEvent.layout.width);
   }, []);
 
+  const normalizeOutfitLoopIndex = useCallback((absoluteIndex: number) => {
+    if (outfitSets.length === 0) {
+      return 0;
+    }
+
+    return ((absoluteIndex % outfitSets.length) + outfitSets.length) % outfitSets.length;
+  }, [outfitSets.length]);
+
   const handleOutfitMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (outfitCarouselWidth <= 0) {
+    if (outfitCarouselWidth <= 0 || outfitSets.length === 0) {
       return;
     }
 
-    const nextIndex = Math.round(event.nativeEvent.contentOffset.x / outfitCarouselWidth);
-    setActiveOutfitIndex(Math.min(Math.max(nextIndex, 0), Math.max(outfitSets.length - 1, 0)));
-  }, [outfitCarouselWidth, outfitSets.length]);
+    const absoluteIndex = Math.round(event.nativeEvent.contentOffset.x / outfitCarouselWidth);
+    const sourceIndex = normalizeOutfitLoopIndex(absoluteIndex);
+    setActiveOutfitIndex(sourceIndex);
+
+    const loopStart = outfitSets.length;
+    const loopEnd = loopedOutfitSets.length - outfitSets.length;
+    if (absoluteIndex < loopStart || absoluteIndex >= loopEnd) {
+      const middleLoopIndex = Math.floor(outfitLoopMultiplier / 2) * outfitSets.length + sourceIndex;
+      outfitCarouselRef.current?.scrollToIndex({ index: middleLoopIndex, animated: false });
+    }
+  }, [loopedOutfitSets.length, normalizeOutfitLoopIndex, outfitCarouselWidth, outfitSets.length]);
 
   const handleOutfitScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (outfitCarouselWidth <= 0) {
+    if (outfitCarouselWidth <= 0 || outfitSets.length === 0) {
       return;
     }
 
     const scrollProgress = event.nativeEvent.contentOffset.x / outfitCarouselWidth;
-    const nextIndex = Math.round(scrollProgress);
+    const nextIndex = normalizeOutfitLoopIndex(Math.round(scrollProgress));
     setActiveOutfitIndex((currentIndex) => {
-      const clampedIndex = Math.min(Math.max(nextIndex, 0), Math.max(outfitSets.length - 1, 0));
-      return currentIndex === clampedIndex ? currentIndex : clampedIndex;
+      return currentIndex === nextIndex ? currentIndex : nextIndex;
     });
-  }, [outfitCarouselWidth, outfitSets.length]);
+  }, [normalizeOutfitLoopIndex, outfitCarouselWidth, outfitSets.length]);
+
+  const getOutfitItemImageUrl = useCallback((outfitSet: OutfitSet) => (
+    outfitSet.items.find((item) => item.product?.imageUrl)?.product?.imageUrl ?? null
+  ), []);
 
   const wheelHandlers = {
     onWheel: (event: { nativeEvent?: { deltaY?: number }; deltaY?: number }) => {
@@ -350,6 +388,15 @@ export function HomeScreen() {
   useEffect(() => {
     loadProducts('', 0, true);
   }, [loadProducts]);
+
+  useEffect(() => {
+    if (outfitCarouselWidth <= 0 || outfitSets.length === 0 || loopedOutfitSets.length === 0) {
+      return;
+    }
+
+    const middleLoopIndex = Math.floor(outfitLoopMultiplier / 2) * outfitSets.length;
+    outfitCarouselRef.current?.scrollToIndex({ index: middleLoopIndex, animated: false });
+  }, [loopedOutfitSets.length, outfitCarouselWidth, outfitSets.length]);
 
   useEffect(() => () => {
     if (wheelRefreshTimerRef.current) {
@@ -398,45 +445,70 @@ export function HomeScreen() {
             </View>
             <View style={styles.outfitCarousel} onLayout={handleOutfitCarouselLayout}>
               <FlatList
-                data={outfitSets}
+                ref={outfitCarouselRef}
+                data={loopedOutfitSets}
                 horizontal
                 pagingEnabled
                 nestedScrollEnabled
                 showsHorizontalScrollIndicator={false}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item) => item.loopKey}
                 onScroll={handleOutfitScroll}
                 onMomentumScrollEnd={handleOutfitMomentumEnd}
                 scrollEventThrottle={16}
+                getItemLayout={(_, index) => ({
+                  length: outfitCarouselWidth || 1,
+                  offset: (outfitCarouselWidth || 1) * index,
+                  index,
+                })}
                 renderItem={({ item: outfitSet }) => (
                   <View style={[styles.outfitPage, { width: outfitCarouselWidth || 1 }]}>
-                    {outfitSet.summary ? (
-                      <Text style={styles.outfitSummary} numberOfLines={2}>
-                        {outfitSet.summary}
-                      </Text>
-                    ) : null}
-                    <View style={styles.outfitItems}>
-                      {outfitSet.items.map((item) => (
-                        <View key={item.id} style={styles.outfitItem}>
-                          <View style={styles.outfitImage}>
-                            {item.product?.imageUrl ? (
-                              <Image source={{ uri: item.product.imageUrl }} style={styles.outfitProductImage} resizeMode="cover" />
-                            ) : (
-                              <Ionicons name="shirt-outline" size={24} color={colors.primary} />
-                            )}
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setIsOutfitExpanded((current) => !current)}
+                      style={styles.outfitPreview}
+                    >
+                      <View style={styles.outfitModelFrame}>
+                        {getOutfitItemImageUrl(outfitSet) ? (
+                          <Image source={{ uri: getOutfitItemImageUrl(outfitSet) ?? '' }} style={styles.outfitModelImage} resizeMode="cover" />
+                        ) : (
+                          <View style={styles.outfitModelPlaceholder}>
+                            <Ionicons name="body-outline" size={64} color={colors.primary} />
                           </View>
-                          <View style={styles.outfitInfo}>
-                            <Text style={styles.outfitCategory}>{getOutfitCategoryLabel(item.category)}</Text>
-                            <Text style={styles.outfitBrand} numberOfLines={1}>{item.product?.brand ?? 'AID-FIT'}</Text>
-                            <Text style={styles.outfitName} numberOfLines={2}>{item.name}</Text>
-                            <Text style={styles.outfitPrice}>
-                              {item.product?.price === null || item.product?.price === undefined
-                                ? '가격 미정'
-                                : `${item.product.price.toLocaleString('ko-KR')}원`}
-                            </Text>
-                          </View>
+                        )}
+                      </View>
+                    </Pressable>
+                    {isOutfitExpanded ? (
+                      <View style={styles.outfitDetails}>
+                        {outfitSet.summary ? (
+                          <Text style={styles.outfitSummary} numberOfLines={2}>
+                            {outfitSet.summary}
+                          </Text>
+                        ) : null}
+                        <View style={styles.outfitItems}>
+                          {outfitSet.items.map((item) => (
+                            <View key={item.id} style={styles.outfitItem}>
+                              <View style={styles.outfitImage}>
+                                {item.product?.imageUrl ? (
+                                  <Image source={{ uri: item.product.imageUrl }} style={styles.outfitProductImage} resizeMode="cover" />
+                                ) : (
+                                  <Ionicons name="shirt-outline" size={24} color={colors.primary} />
+                                )}
+                              </View>
+                              <View style={styles.outfitInfo}>
+                                <Text style={styles.outfitCategory}>{getOutfitCategoryLabel(item.category)}</Text>
+                                <Text style={styles.outfitBrand} numberOfLines={1}>{item.product?.brand ?? 'AID-FIT'}</Text>
+                                <Text style={styles.outfitName} numberOfLines={2}>{item.name}</Text>
+                                <Text style={styles.outfitPrice}>
+                                  {item.product?.price === null || item.product?.price === undefined
+                                    ? '가격 미정'
+                                    : `${item.product.price.toLocaleString('ko-KR')}원`}
+                                </Text>
+                              </View>
+                            </View>
+                          ))}
                         </View>
-                      ))}
-                    </View>
+                      </View>
+                    ) : null}
                   </View>
                 )}
               />
@@ -625,9 +697,34 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   outfitCarousel: {
-    minHeight: 480,
+    minHeight: 256,
   },
   outfitPage: {
+    gap: spacing.md,
+  },
+  outfitPreview: {
+    minHeight: 220,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceFilter,
+    overflow: 'hidden',
+  },
+  outfitModelFrame: {
+    height: 220,
+    backgroundColor: colors.navySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  outfitModelImage: {
+    width: '100%',
+    height: '100%',
+  },
+  outfitModelPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  outfitDetails: {
     gap: spacing.md,
   },
   outfitPagination: {

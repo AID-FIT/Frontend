@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ActivityIndicator, FlatList, PanResponder, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { ProductCard } from '../../components/fashion/ProductCard';
@@ -17,6 +17,7 @@ const categories = ['캐주얼', '여름', '미니멀', '데이트룩'];
 const heroTitle = '오늘의 코디';
 const titleGradient = ['#0B1F3B', '#2EC4B6'];
 const endReachedMessage = '모든 추천 아이템을 보았어요! 아래로 당겨 새롭게 아이템을 추천해드릴게요!';
+const edgeThreshold = 24;
 
 function hexToRgb(hex: string) {
   const value = hex.replace('#', '');
@@ -60,29 +61,13 @@ export function HomeScreen() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshingRecommendations, setIsRefreshingRecommendations] = useState(false);
   const [error, setError] = useState('');
-  const [hasReachedEndOnce, setHasReachedEndOnce] = useState(false);
   const requestKeyRef = useRef(0);
   const refreshSeedRef = useRef(0);
   const listRef = useRef<FlatList<Product>>(null);
   const scrollOffsetRef = useRef(0);
-  const dragStartOffsetRef = useRef(0);
+  const distanceFromBottomRef = useRef(Number.POSITIVE_INFINITY);
+  const hasReachedEndOnceRef = useRef(false);
   const canTriggerEndRefreshRef = useRef(false);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        Math.abs(gestureState.dy) > 8 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
-      onPanResponderGrant: () => {
-        dragStartOffsetRef.current = scrollOffsetRef.current;
-        canTriggerEndRefreshRef.current = true;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        const nextOffset = Math.max(0, dragStartOffsetRef.current - gestureState.dy);
-        listRef.current?.scrollToOffset({ offset: nextOffset, animated: false });
-      },
-      onPanResponderTerminationRequest: () => true,
-    }),
-  ).current;
 
   const recommendationToProducts = useCallback((recommendation: Recommendation, refreshSeed: number): Product[] => (
     recommendation.items.map((item, index) => ({
@@ -108,7 +93,7 @@ export function HomeScreen() {
     } else {
       setIsRefreshingRecommendations(true);
     }
-    setHasReachedEndOnce(false);
+    hasReachedEndOnceRef.current = false;
     setError('');
     getHomeRecommendation(nextQuery.trim(), refreshSeed)
       .then((recommendation: Recommendation) => {
@@ -134,7 +119,11 @@ export function HomeScreen() {
       });
   }, [recommendationToProducts]);
 
-  const handleEndReached = useCallback(() => {
+  const refreshRecommendationSet = useCallback(() => {
+    loadProducts(query, refreshSeedRef.current + 1, false);
+  }, [loadProducts, query]);
+
+  const triggerEndAction = useCallback(() => {
     if (
       isInitialLoading ||
       isRefreshingRecommendations ||
@@ -145,13 +134,25 @@ export function HomeScreen() {
     }
 
     canTriggerEndRefreshRef.current = false;
-    if (!hasReachedEndOnce) {
-      setHasReachedEndOnce(true);
+    if (!hasReachedEndOnceRef.current) {
+      hasReachedEndOnceRef.current = true;
       return;
     }
 
-    loadProducts(query, refreshSeedRef.current + 1, false);
-  }, [hasReachedEndOnce, isInitialLoading, isRefreshingRecommendations, loadProducts, products.length, query]);
+    refreshRecommendationSet();
+  }, [isInitialLoading, isRefreshingRecommendations, products.length, refreshRecommendationSet]);
+
+  const handleEndReached = useCallback(() => {
+    triggerEndAction();
+  }, [triggerEndAction]);
+
+  const handlePullRefresh = useCallback(() => {
+    if (isInitialLoading || isRefreshingRecommendations) {
+      return;
+    }
+
+    refreshRecommendationSet();
+  }, [isInitialLoading, isRefreshingRecommendations, refreshRecommendationSet]);
 
   const handleCategoryPress = useCallback((category: string) => {
     setSelectedCategory(category);
@@ -162,12 +163,37 @@ export function HomeScreen() {
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     scrollOffsetRef.current = contentOffset.y;
+    distanceFromBottomRef.current = contentSize.height - layoutMeasurement.height - contentOffset.y;
 
-    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-    if (distanceFromBottom <= 24) {
+    if (distanceFromBottomRef.current <= edgeThreshold) {
       handleEndReached();
     }
   }, [handleEndReached]);
+
+  const handleScrollAttempt = useCallback((direction: 'up' | 'down') => {
+    canTriggerEndRefreshRef.current = true;
+
+    if (direction === 'up' && scrollOffsetRef.current <= edgeThreshold) {
+      refreshRecommendationSet();
+      return;
+    }
+
+    if (direction === 'down' && distanceFromBottomRef.current <= edgeThreshold) {
+      triggerEndAction();
+    }
+  }, [refreshRecommendationSet, triggerEndAction]);
+
+  const wheelHandlers = {
+    onWheel: (event: { nativeEvent?: { deltaY?: number }; deltaY?: number }) => {
+      const deltaY = event.nativeEvent?.deltaY ?? event.deltaY ?? 0;
+      if (deltaY > 0) {
+        handleScrollAttempt('down');
+      }
+      if (deltaY < 0) {
+        handleScrollAttempt('up');
+      }
+    },
+  };
 
   useEffect(() => {
     loadProducts('', 0, true);
@@ -219,7 +245,7 @@ export function HomeScreen() {
 
   return (
     <ScreenContainer scroll={false}>
-      <View style={styles.feed} {...panResponder.panHandlers}>
+      <View style={styles.feed} {...wheelHandlers}>
         <FlatList
           ref={listRef}
           data={products}
@@ -232,10 +258,24 @@ export function HomeScreen() {
           onScroll={handleScroll}
           onScrollBeginDrag={() => {
             canTriggerEndRefreshRef.current = true;
+            if (distanceFromBottomRef.current <= edgeThreshold) {
+              triggerEndAction();
+            }
+          }}
+          onMomentumScrollBegin={() => {
+            canTriggerEndRefreshRef.current = true;
           }}
           scrollEventThrottle={16}
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.42}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshingRecommendations && scrollOffsetRef.current <= 0}
+              onRefresh={handlePullRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
           bounces
           alwaysBounceVertical
           style={styles.feedList}

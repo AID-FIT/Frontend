@@ -92,6 +92,13 @@ jobs:
           [ -n "${{ secrets.KUBECONFIG }}" ]     || { echo "KUBECONFIG secret 미설정"; exit 1; }
           [ -n "${{ secrets.K3S_API_SERVER }}" ] || { echo "K3S_API_SERVER secret 미설정"; exit 1; }
 
+          case "${K3S_API_SERVER}" in
+            http://*|*:12570|*:12571)
+              echo "K3S_API_SERVER는 앱 URL이 아니라 K3s API 서버 주소여야 합니다. 예: https://devse.kr:6443"
+              exit 1
+              ;;
+          esac
+
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
@@ -111,7 +118,13 @@ jobs:
           kubeconfig.write_text("\n".join(lines) + "\n")
           PY
 
-          kubectl config set-cluster default --insecure-skip-tls-verify=true
+          CURRENT_CONTEXT="$(kubectl config current-context)"
+          CLUSTER_NAME="$(kubectl config view --raw -o "jsonpath={.contexts[?(@.name=='${CURRENT_CONTEXT}')].context.cluster}")"
+          [ -n "${CLUSTER_NAME}" ] || { echo "kubeconfig current-context cluster 확인 실패"; exit 1; }
+          kubectl config set-cluster "${CLUSTER_NAME}" --insecure-skip-tls-verify=true
+          echo "Using kube context: ${CURRENT_CONTEXT}"
+          kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
+          echo
         env:
           K3S_API_SERVER: ${{ secrets.K3S_API_SERVER }}
 

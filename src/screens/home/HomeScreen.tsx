@@ -18,6 +18,9 @@ const heroTitle = '오늘의 코디';
 const titleGradient = ['#0B1F3B', '#2EC4B6'];
 const endReachedMessage = '모든 추천 아이템을 보았어요! 아래로 당겨 새롭게 아이템을 추천해드릴게요!';
 const edgeThreshold = 24;
+const bottomPullThreshold = 36;
+const refreshLimitPerSession = 5;
+const refreshCooldownMs = 5 * 60 * 1000;
 
 function hexToRgb(hex: string) {
   const value = hex.replace('#', '');
@@ -60,14 +63,25 @@ export function HomeScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshingRecommendations, setIsRefreshingRecommendations] = useState(false);
+  const [isBottomPullArmed, setIsBottomPullArmed] = useState(false);
+  const [refreshCount, setRefreshCount] = useState(0);
+  const [cooldownRemainingSeconds, setCooldownRemainingSeconds] = useState(0);
   const [error, setError] = useState('');
   const requestKeyRef = useRef(0);
   const refreshSeedRef = useRef(0);
   const listRef = useRef<FlatList<Product>>(null);
   const scrollOffsetRef = useRef(0);
   const distanceFromBottomRef = useRef(Number.POSITIVE_INFINITY);
-  const hasReachedEndOnceRef = useRef(false);
-  const canTriggerEndRefreshRef = useRef(false);
+  const refreshCountRef = useRef(0);
+  const cooldownUntilRef = useRef(0);
+  const dragStartedAtBottomRef = useRef(false);
+  const isBottomPullArmedRef = useRef(false);
+  const wheelRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setBottomPullArmed = useCallback((nextValue: boolean) => {
+    isBottomPullArmedRef.current = nextValue;
+    setIsBottomPullArmed(nextValue);
+  }, []);
 
   const recommendationToProducts = useCallback((recommendation: Recommendation, refreshSeed: number): Product[] => (
     recommendation.items.map((item, index) => ({
@@ -93,7 +107,7 @@ export function HomeScreen() {
     } else {
       setIsRefreshingRecommendations(true);
     }
-    hasReachedEndOnceRef.current = false;
+    setBottomPullArmed(false);
     setError('');
     getHomeRecommendation(nextQuery.trim(), refreshSeed)
       .then((recommendation: Recommendation) => {
@@ -117,42 +131,62 @@ export function HomeScreen() {
         setIsInitialLoading(false);
         setIsRefreshingRecommendations(false);
       });
-  }, [recommendationToProducts]);
+  }, [recommendationToProducts, setBottomPullArmed]);
 
   const refreshRecommendationSet = useCallback(() => {
     loadProducts(query, refreshSeedRef.current + 1, false);
   }, [loadProducts, query]);
 
-  const triggerEndAction = useCallback(() => {
-    if (
-      isInitialLoading ||
-      isRefreshingRecommendations ||
-      products.length === 0 ||
-      !canTriggerEndRefreshRef.current
-    ) {
+  const getCooldownRemainingSeconds = useCallback(() => (
+    Math.max(0, Math.ceil((cooldownUntilRef.current - Date.now()) / 1000))
+  ), []);
+
+  const startRefreshCooldown = useCallback(() => {
+    cooldownUntilRef.current = Date.now() + refreshCooldownMs;
+    setCooldownRemainingSeconds(getCooldownRemainingSeconds());
+  }, [getCooldownRemainingSeconds]);
+
+  const canStartRefresh = useCallback(() => {
+    const remainingSeconds = getCooldownRemainingSeconds();
+    if (remainingSeconds > 0) {
+      setCooldownRemainingSeconds(remainingSeconds);
+      setError(`${Math.ceil(remainingSeconds / 60)}분 후에 다시 새 추천을 받을 수 있어요.`);
+      return false;
+    }
+
+    if (refreshCountRef.current >= refreshLimitPerSession) {
+      startRefreshCooldown();
+      setError('새 추천은 잠시 후 다시 받을 수 있어요.');
+      return false;
+    }
+
+    return true;
+  }, [getCooldownRemainingSeconds, startRefreshCooldown]);
+
+  const requestRefreshRecommendationSet = useCallback(() => {
+    if (isInitialLoading || isRefreshingRecommendations || products.length === 0 || !canStartRefresh()) {
       return;
     }
 
-    canTriggerEndRefreshRef.current = false;
-    if (!hasReachedEndOnceRef.current) {
-      hasReachedEndOnceRef.current = true;
-      return;
+    const nextRefreshCount = refreshCountRef.current + 1;
+    refreshCountRef.current = nextRefreshCount;
+    setRefreshCount(nextRefreshCount);
+    if (nextRefreshCount >= refreshLimitPerSession) {
+      startRefreshCooldown();
     }
 
     refreshRecommendationSet();
-  }, [isInitialLoading, isRefreshingRecommendations, products.length, refreshRecommendationSet]);
+  }, [canStartRefresh, isInitialLoading, isRefreshingRecommendations, products.length, refreshRecommendationSet, startRefreshCooldown]);
 
   const handleEndReached = useCallback(() => {
-    triggerEndAction();
-  }, [triggerEndAction]);
+    if (!isInitialLoading && !isRefreshingRecommendations && products.length > 0) {
+      setBottomPullArmed(false);
+    }
+  }, [isInitialLoading, isRefreshingRecommendations, products.length, setBottomPullArmed]);
 
   const handlePullRefresh = useCallback(() => {
-    if (isInitialLoading || isRefreshingRecommendations) {
-      return;
-    }
-
-    refreshRecommendationSet();
-  }, [isInitialLoading, isRefreshingRecommendations, refreshRecommendationSet]);
+    requestRefreshRecommendationSet();
+  }, [requestRefreshRecommendationSet]);
 
   const handleCategoryPress = useCallback((category: string) => {
     setSelectedCategory(category);
@@ -168,36 +202,82 @@ export function HomeScreen() {
     if (distanceFromBottomRef.current <= edgeThreshold) {
       handleEndReached();
     }
-  }, [handleEndReached]);
 
-  const handleScrollAttempt = useCallback((direction: 'up' | 'down') => {
-    canTriggerEndRefreshRef.current = true;
-
-    if (direction === 'up' && scrollOffsetRef.current <= edgeThreshold) {
-      refreshRecommendationSet();
-      return;
+    if (
+      dragStartedAtBottomRef.current &&
+      distanceFromBottomRef.current <= -bottomPullThreshold &&
+      !isRefreshingRecommendations
+    ) {
+      setBottomPullArmed(true);
     }
+  }, [handleEndReached, isRefreshingRecommendations, setBottomPullArmed]);
 
-    if (direction === 'down' && distanceFromBottomRef.current <= edgeThreshold) {
-      triggerEndAction();
+  const handleScrollBeginDrag = useCallback(() => {
+    dragStartedAtBottomRef.current = distanceFromBottomRef.current <= edgeThreshold;
+    setBottomPullArmed(
+      dragStartedAtBottomRef.current &&
+      !isInitialLoading &&
+      !isRefreshingRecommendations &&
+      products.length > 0 &&
+      getCooldownRemainingSeconds() <= 0 &&
+      refreshCountRef.current < refreshLimitPerSession,
+    );
+  }, [getCooldownRemainingSeconds, isInitialLoading, isRefreshingRecommendations, products.length, setBottomPullArmed]);
+
+  const handleScrollEndDrag = useCallback(() => {
+    if (dragStartedAtBottomRef.current && isBottomPullArmedRef.current) {
+      setBottomPullArmed(false);
+      requestRefreshRecommendationSet();
     }
-  }, [refreshRecommendationSet, triggerEndAction]);
+    dragStartedAtBottomRef.current = false;
+    setBottomPullArmed(false);
+  }, [requestRefreshRecommendationSet, setBottomPullArmed]);
 
   const wheelHandlers = {
     onWheel: (event: { nativeEvent?: { deltaY?: number }; deltaY?: number }) => {
       const deltaY = event.nativeEvent?.deltaY ?? event.deltaY ?? 0;
-      if (deltaY > 0) {
-        handleScrollAttempt('down');
-      }
-      if (deltaY < 0) {
-        handleScrollAttempt('up');
+      if (deltaY > 0 && distanceFromBottomRef.current <= edgeThreshold) {
+        dragStartedAtBottomRef.current = true;
+        setBottomPullArmed(true);
+        if (wheelRefreshTimerRef.current) {
+          clearTimeout(wheelRefreshTimerRef.current);
+        }
+        wheelRefreshTimerRef.current = setTimeout(() => {
+          handleScrollEndDrag();
+        }, 500);
       }
     },
+    onMouseUp: handleScrollEndDrag,
+    onTouchEnd: handleScrollEndDrag,
   };
 
   useEffect(() => {
     loadProducts('', 0, true);
   }, [loadProducts]);
+
+  useEffect(() => () => {
+    if (wheelRefreshTimerRef.current) {
+      clearTimeout(wheelRefreshTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (cooldownRemainingSeconds <= 0) {
+      return undefined;
+    }
+
+    const timer = setInterval(() => {
+      const remainingSeconds = getCooldownRemainingSeconds();
+      setCooldownRemainingSeconds(remainingSeconds);
+      if (remainingSeconds <= 0) {
+        refreshCountRef.current = 0;
+        setRefreshCount(0);
+        setError('');
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [cooldownRemainingSeconds, getCooldownRemainingSeconds]);
 
   const header = (
     <>
@@ -256,15 +336,8 @@ export function HomeScreen() {
           contentContainerStyle={styles.grid}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
-          onScrollBeginDrag={() => {
-            canTriggerEndRefreshRef.current = true;
-            if (distanceFromBottomRef.current <= edgeThreshold) {
-              triggerEndAction();
-            }
-          }}
-          onMomentumScrollBegin={() => {
-            canTriggerEndRefreshRef.current = true;
-          }}
+          onScrollBeginDrag={handleScrollBeginDrag}
+          onScrollEndDrag={handleScrollEndDrag}
           scrollEventThrottle={16}
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.42}
@@ -292,8 +365,19 @@ export function HomeScreen() {
                     <ActivityIndicator size="small" color={colors.primary} />
                     <Text style={styles.footerText}>새 추천을 불러오는 중이에요</Text>
                   </>
+                ) : isBottomPullArmed ? (
+                  <>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.footerText}>놓으면 새 추천을 불러와요</Text>
+                  </>
+                ) : cooldownRemainingSeconds > 0 ? (
+                  <Text style={styles.footerText}>
+                    {Math.ceil(cooldownRemainingSeconds / 60)}분 후 새 추천을 다시 받을 수 있어요
+                  </Text>
                 ) : (
-                  <Text style={styles.footerText}>{endReachedMessage}</Text>
+                  <Text style={styles.footerText}>
+                    {endReachedMessage} ({refreshCount}/{refreshLimitPerSession})
+                  </Text>
                 )}
               </View>
             ) : null

@@ -25,13 +25,18 @@ export function ProductCard({ product }: ProductCardProps) {
         )}
       </View>
       <View style={styles.body}>
+        <Text style={styles.brand} numberOfLines={1}>
+          {product.brand}
+        </Text>
         <Text style={styles.name} numberOfLines={2}>
           {product.name}
         </Text>
         <Text style={styles.price}>{product.price}</Text>
-        <View style={styles.iconRow}>
+        <View style={styles.tagRow}>
           {product.tags.slice(0, 2).map((tag) => (
-            <View key={tag} style={styles.dot} />
+            <View key={tag} style={styles.tag}>
+              <Text style={styles.tagText} numberOfLines={1}>{tag}</Text>
+            </View>
           ))}
         </View>
       </View>
@@ -74,6 +79,13 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
+  brand: {
+    color: colors.subText,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: fontFamily.semibold,
+    fontWeight: fontWeight.semibold,
+  },
   name: {
     color: colors.text,
     fontSize: 16,
@@ -87,15 +99,23 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.heavy,
     fontWeight: fontWeight.heavy,
   },
-  iconRow: {
+  tagRow: {
     flexDirection: 'row',
     gap: spacing.xs,
     marginTop: spacing.sm,
   },
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.accentTeal,
+  tag: {
+    maxWidth: '48%',
+    borderRadius: radius.md,
+    backgroundColor: colors.navySoft,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  tagText: {
+    color: colors.primary,
+    fontSize: 11,
+    lineHeight: 15,
+    fontFamily: fontFamily.semibold,
+    fontWeight: fontWeight.semibold,
   },
 });

@@ -16,12 +16,7 @@ import type { Product, Recommendation } from '../../types/fashion';
 const categories = ['캐주얼', '여름', '미니멀', '데이트룩'];
 const heroTitle = '오늘의 코디';
 const titleGradient = ['#0B1F3B', '#2EC4B6'];
-const pagePrompts = [
-  '첫 화면에 어울리는 핵심 추천을 보여줘',
-  '앞 추천과 겹치지 않게 다른 분위기의 하의를 더 추천해줘',
-  '신발과 가방까지 포함해서 추가 추천을 보여줘',
-  '계절감과 색 조합을 다르게 해서 더 추천해줘',
-];
+const endReachedMessage = '모든 추천 아이템을 보았어요! 아래로 당겨 새롭게 아이템을 추천해드릴게요!';
 
 function hexToRgb(hex: string) {
   const value = hex.replace('#', '');
@@ -63,14 +58,15 @@ export function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState(categories[0]);
   const [products, setProducts] = useState<Product[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [isRefreshingRecommendations, setIsRefreshingRecommendations] = useState(false);
   const [error, setError] = useState('');
-  const [hasMore, setHasMore] = useState(true);
+  const [hasReachedEndOnce, setHasReachedEndOnce] = useState(false);
   const requestKeyRef = useRef(0);
-  const pageRef = useRef(0);
+  const refreshSeedRef = useRef(0);
   const listRef = useRef<FlatList<Product>>(null);
   const scrollOffsetRef = useRef(0);
   const dragStartOffsetRef = useRef(0);
+  const canTriggerEndRefreshRef = useRef(false);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -78,6 +74,7 @@ export function HomeScreen() {
         Math.abs(gestureState.dy) > 8 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
       onPanResponderGrant: () => {
         dragStartOffsetRef.current = scrollOffsetRef.current;
+        canTriggerEndRefreshRef.current = true;
       },
       onPanResponderMove: (_, gestureState) => {
         const nextOffset = Math.max(0, dragStartOffsetRef.current - gestureState.dy);
@@ -87,9 +84,9 @@ export function HomeScreen() {
     }),
   ).current;
 
-  const recommendationToProducts = useCallback((recommendation: Recommendation, pageIndex: number): Product[] => (
+  const recommendationToProducts = useCallback((recommendation: Recommendation, refreshSeed: number): Product[] => (
     recommendation.items.map((item, index) => ({
-      id: `${item.product?.id ?? item.id}-${pageIndex}-${index}`,
+      id: `${item.product?.id ?? item.id}-${refreshSeed}-${index}`,
       brand: item.product?.brand ?? 'AID-FIT',
       name: item.name,
       price: item.product?.price === null || item.product?.price === undefined
@@ -102,32 +99,27 @@ export function HomeScreen() {
     }))
   ), []);
 
-  const buildPagedPrompt = useCallback((baseQuery: string, pageIndex: number) => {
-    const extra = pagePrompts[pageIndex % pagePrompts.length];
-    return [baseQuery.trim(), extra, `${pageIndex + 1}번째 추천 묶음`].filter(Boolean).join(' / ');
-  }, []);
-
-  const loadProducts = useCallback((nextQuery = '', mode: 'replace' | 'append' = 'replace') => {
-    const pageIndex = mode === 'replace' ? 0 : pageRef.current + 1;
+  const loadProducts = useCallback((nextQuery = '', refreshSeed = 0, showInitialLoader = true) => {
     const requestKey = requestKeyRef.current + 1;
     requestKeyRef.current = requestKey;
-    if (mode === 'replace') {
+
+    if (showInitialLoader) {
       setIsInitialLoading(true);
-      setHasMore(true);
     } else {
-      setIsFetchingMore(true);
+      setIsRefreshingRecommendations(true);
     }
+    setHasReachedEndOnce(false);
     setError('');
-    getHomeRecommendation(buildPagedPrompt(nextQuery, pageIndex))
+    getHomeRecommendation(nextQuery.trim(), refreshSeed)
       .then((recommendation: Recommendation) => {
         if (requestKeyRef.current !== requestKey) {
           return;
         }
 
-        const nextProducts = recommendationToProducts(recommendation, pageIndex);
-        setProducts((current) => (mode === 'replace' ? nextProducts : [...current, ...nextProducts]));
-        pageRef.current = pageIndex;
-        setHasMore(nextProducts.length > 0);
+        const nextProducts = recommendationToProducts(recommendation, refreshSeed);
+        setProducts(nextProducts);
+        refreshSeedRef.current = refreshSeed;
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
       })
       .catch(() => {
         setError('추천 정보를 불러오지 못했어요.');
@@ -138,31 +130,47 @@ export function HomeScreen() {
         }
 
         setIsInitialLoading(false);
-        setIsFetchingMore(false);
+        setIsRefreshingRecommendations(false);
       });
-  }, [buildPagedPrompt, recommendationToProducts]);
+  }, [recommendationToProducts]);
 
   const handleEndReached = useCallback(() => {
-    if (isInitialLoading || isFetchingMore || !hasMore || products.length === 0) {
+    if (
+      isInitialLoading ||
+      isRefreshingRecommendations ||
+      products.length === 0 ||
+      !canTriggerEndRefreshRef.current
+    ) {
       return;
     }
 
-    loadProducts(query, 'append');
-  }, [hasMore, isFetchingMore, isInitialLoading, loadProducts, products.length, query]);
+    canTriggerEndRefreshRef.current = false;
+    if (!hasReachedEndOnce) {
+      setHasReachedEndOnce(true);
+      return;
+    }
+
+    loadProducts(query, refreshSeedRef.current + 1, false);
+  }, [hasReachedEndOnce, isInitialLoading, isRefreshingRecommendations, loadProducts, products.length, query]);
 
   const handleCategoryPress = useCallback((category: string) => {
     setSelectedCategory(category);
     setQuery(category);
-    loadProducts(category, 'replace');
-    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    loadProducts(category, 0, true);
   }, [loadProducts]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
-  }, []);
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    scrollOffsetRef.current = contentOffset.y;
+
+    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    if (distanceFromBottom <= 24) {
+      handleEndReached();
+    }
+  }, [handleEndReached]);
 
   useEffect(() => {
-    loadProducts('', 'replace');
+    loadProducts('', 0, true);
   }, [loadProducts]);
 
   const header = (
@@ -191,7 +199,7 @@ export function HomeScreen() {
           placeholder="오늘 코디에 추가로 원하는 점을 입력하세요"
           value={query}
           onChangeText={setQuery}
-          onSubmitEditing={() => loadProducts(query, 'replace')}
+          onSubmitEditing={() => loadProducts(query, 0, true)}
           style={styles.searchInput}
         />
       </View>
@@ -222,6 +230,9 @@ export function HomeScreen() {
           contentContainerStyle={styles.grid}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
+          onScrollBeginDrag={() => {
+            canTriggerEndRefreshRef.current = true;
+          }}
           scrollEventThrottle={16}
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.42}
@@ -236,13 +247,13 @@ export function HomeScreen() {
           ListFooterComponent={
             products.length > 0 ? (
               <View style={styles.footer}>
-                {isFetchingMore ? (
+                {isRefreshingRecommendations ? (
                   <>
                     <ActivityIndicator size="small" color={colors.primary} />
-                    <Text style={styles.footerText}>추가 추천을 불러오는 중이에요</Text>
+                    <Text style={styles.footerText}>새 추천을 불러오는 중이에요</Text>
                   </>
                 ) : (
-                  <Text style={styles.footerText}>{hasMore ? '아래로 더 당기면 추천이 이어져요' : '오늘 추천을 모두 불러왔어요'}</Text>
+                  <Text style={styles.footerText}>{endReachedMessage}</Text>
                 )}
               </View>
             ) : null

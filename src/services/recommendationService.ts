@@ -72,10 +72,11 @@ export async function getRecommendation(recommendationId: string): Promise<Recom
   return mapAgentRecommendation(response.data);
 }
 
-export async function getHomeRecommendation(prompt = ''): Promise<Recommendation> {
+export async function getHomeRecommendation(prompt = '', refreshSeed = 0): Promise<Recommendation> {
   const response = await apiClient.get<AgentRecommendationResponse>('/recommendations/home', {
     params: {
       prompt,
+      refresh_seed: refreshSeed,
     },
   });
   return mapAgentRecommendation(response.data);

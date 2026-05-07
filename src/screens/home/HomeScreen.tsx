@@ -316,6 +316,19 @@ export function HomeScreen() {
     setActiveOutfitIndex(Math.min(Math.max(nextIndex, 0), Math.max(outfitSets.length - 1, 0)));
   }, [outfitCarouselWidth, outfitSets.length]);
 
+  const handleOutfitScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (outfitCarouselWidth <= 0) {
+      return;
+    }
+
+    const scrollProgress = event.nativeEvent.contentOffset.x / outfitCarouselWidth;
+    const nextIndex = Math.round(scrollProgress);
+    setActiveOutfitIndex((currentIndex) => {
+      const clampedIndex = Math.min(Math.max(nextIndex, 0), Math.max(outfitSets.length - 1, 0));
+      return currentIndex === clampedIndex ? currentIndex : clampedIndex;
+    });
+  }, [outfitCarouselWidth, outfitSets.length]);
+
   const wheelHandlers = {
     onWheel: (event: { nativeEvent?: { deltaY?: number }; deltaY?: number }) => {
       const deltaY = event.nativeEvent?.deltaY ?? event.deltaY ?? 0;
@@ -396,7 +409,9 @@ export function HomeScreen() {
                 nestedScrollEnabled
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={(item) => item.id}
+                onScroll={handleOutfitScroll}
                 onMomentumScrollEnd={handleOutfitMomentumEnd}
+                scrollEventThrottle={16}
                 renderItem={({ item: outfitSet }) => (
                   <View style={[styles.outfitPage, { width: outfitCarouselWidth || 1 }]}>
                     {outfitSet.summary ? (

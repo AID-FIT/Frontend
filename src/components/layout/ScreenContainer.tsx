@@ -18,7 +18,7 @@ export function ScreenContainer({
   if (!scroll) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={[styles.content, padded && styles.padded]}>{children}</View>
+        <View style={[styles.content, styles.fixedContent, padded && styles.padded]}>{children}</View>
       </SafeAreaView>
     );
   }
@@ -42,6 +42,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flexGrow: 1,
+  },
+  fixedContent: {
+    flex: 1,
+    minHeight: 0,
   },
   padded: {
     paddingHorizontal: spacing.xl,

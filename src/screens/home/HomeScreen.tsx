@@ -60,6 +60,7 @@ function GradientHeroTitle() {
 
 export function HomeScreen() {
   const [query, setQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(categories[0]);
   const [products, setProducts] = useState<Product[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -149,6 +150,13 @@ export function HomeScreen() {
     loadProducts(query, 'append');
   }, [hasMore, isFetchingMore, isInitialLoading, loadProducts, products.length, query]);
 
+  const handleCategoryPress = useCallback((category: string) => {
+    setSelectedCategory(category);
+    setQuery(category);
+    loadProducts(category, 'replace');
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, [loadProducts]);
+
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
   }, []);
@@ -189,8 +197,13 @@ export function HomeScreen() {
       </View>
 
       <View style={styles.chips}>
-        {categories.map((category, index) => (
-          <Chip key={category} label={category} selected={index === 0} />
+        {categories.map((category) => (
+          <Chip
+            key={category}
+            label={category}
+            selected={selectedCategory === category}
+            onPress={() => handleCategoryPress(category)}
+          />
         ))}
       </View>
     </>

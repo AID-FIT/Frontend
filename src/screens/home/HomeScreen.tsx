@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { ActivityIndicator, FlatList, Image, RefreshControl, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { ProductCard } from '../../components/fashion/ProductCard';
@@ -11,17 +11,29 @@ import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
 import { getHomeRecommendation } from '../../services/recommendationService';
-import type { Product, Recommendation } from '../../types/fashion';
+import type { OutfitItem, Product, Recommendation } from '../../types/fashion';
 
 const categories = ['캐주얼', '여름', '미니멀', '데이트룩'];
-const defaultHeroTitle = '오늘의 코디';
-const defaultHeroDescription = '최신 코디 정보를 가져왔어요';
+const heroTitle = '오늘의 코디';
 const titleGradient = ['#0B1F3B', '#2EC4B6'];
 const endReachedMessage = '모든 추천 아이템을 보았어요! 아래로 당겨 새롭게 아이템을 추천해드릴게요!';
 const edgeThreshold = 24;
 const bottomPullThreshold = 36;
 const refreshLimitPerSession = 5;
 const refreshCooldownMs = 5 * 60 * 1000;
+const outfitCategoryOrder = ['cap', 'hat', 'top', 'shirt', 'outer', 'pants', 'bottom', 'shoes', 'bag', 'accessory'];
+const outfitCategoryLabels: Record<string, string> = {
+  cap: '모자',
+  hat: '모자',
+  top: '상의',
+  shirt: '상의',
+  outer: '아우터',
+  pants: '하의',
+  bottom: '하의',
+  shoes: '신발',
+  bag: '가방',
+  accessory: '액세서리',
+};
 
 function hexToRgb(hex: string) {
   const value = hex.replace('#', '');
@@ -41,11 +53,11 @@ function interpolateHexColor(from: string, to: string, progress: number) {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
-function GradientHeroTitle({ title }: { title: string }) {
-  const letters = Array.from(title);
+function GradientHeroTitle() {
+  const letters = Array.from(heroTitle);
 
   return (
-    <Text style={styles.heroTitle} accessibilityLabel={title} numberOfLines={2}>
+    <Text style={styles.heroTitle} accessibilityLabel={heroTitle}>
       {letters.map((letter, index) => {
         const progress = letters.length <= 1 ? 0 : index / (letters.length - 1);
         return (
@@ -58,12 +70,22 @@ function GradientHeroTitle({ title }: { title: string }) {
   );
 }
 
+function getOutfitCategoryRank(category: string) {
+  const normalizedCategory = category.toLowerCase();
+  const rank = outfitCategoryOrder.indexOf(normalizedCategory);
+  return rank === -1 ? outfitCategoryOrder.length : rank;
+}
+
+function getOutfitCategoryLabel(category: string) {
+  return outfitCategoryLabels[category.toLowerCase()] ?? category;
+}
+
 export function HomeScreen() {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(categories[0]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [heroTitleText, setHeroTitleText] = useState(defaultHeroTitle);
-  const [heroDescription, setHeroDescription] = useState(defaultHeroDescription);
+  const [outfitItems, setOutfitItems] = useState<OutfitItem[]>([]);
+  const [outfitSummary, setOutfitSummary] = useState('');
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshingRecommendations, setIsRefreshingRecommendations] = useState(false);
   const [isBottomPullArmed, setIsBottomPullArmed] = useState(false);
@@ -101,6 +123,12 @@ export function HomeScreen() {
     }))
   ), []);
 
+  const recommendationToOutfitItems = useCallback((recommendation: Recommendation): OutfitItem[] => (
+    [...recommendation.items]
+      .sort((left, right) => getOutfitCategoryRank(left.category) - getOutfitCategoryRank(right.category))
+      .slice(0, 5)
+  ), []);
+
   const loadProducts = useCallback((nextQuery = '', refreshSeed = 0, showInitialLoader = true) => {
     const requestKey = requestKeyRef.current + 1;
     requestKeyRef.current = requestKey;
@@ -120,8 +148,8 @@ export function HomeScreen() {
 
         const nextProducts = recommendationToProducts(recommendation, refreshSeed);
         setProducts(nextProducts);
-        setHeroTitleText(recommendation.title || defaultHeroTitle);
-        setHeroDescription(recommendation.summary || defaultHeroDescription);
+        setOutfitItems(recommendationToOutfitItems(recommendation));
+        setOutfitSummary(recommendation.summary);
         refreshSeedRef.current = refreshSeed;
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
       })
@@ -136,7 +164,7 @@ export function HomeScreen() {
         setIsInitialLoading(false);
         setIsRefreshingRecommendations(false);
       });
-  }, [recommendationToProducts, setBottomPullArmed]);
+  }, [recommendationToOutfitItems, recommendationToProducts, setBottomPullArmed]);
 
   const refreshRecommendationSet = useCallback(() => {
     loadProducts(query, refreshSeedRef.current + 1, false);
@@ -287,12 +315,12 @@ export function HomeScreen() {
   const header = (
     <>
       <View style={styles.header}>
-        <Text style={styles.greeting} numberOfLines={3}>{heroDescription}</Text>
+        <Text style={styles.greeting}>최신 코디 정보를 가져왔어요</Text>
       </View>
 
       <LinearGradient colors={[colors.navySoft, colors.surfaceFilter]} style={styles.heroCard}>
         <View style={styles.heroText}>
-          <GradientHeroTitle title={heroTitleText} />
+          <GradientHeroTitle />
           <View style={styles.heroDots}>
             <View style={styles.heroDot} />
             <View style={styles.heroDotMuted} />
@@ -303,6 +331,46 @@ export function HomeScreen() {
           <Ionicons name="shirt-outline" size={28} color={colors.accentTeal} />
         </View>
       </LinearGradient>
+
+      {outfitItems.length > 0 ? (
+        <View style={styles.outfitCard}>
+          <View style={styles.outfitHeader}>
+            <View>
+              <Text style={styles.outfitEyebrow}>AI 추천 세트</Text>
+              <Text style={styles.outfitTitle}>오늘의 추천 코디</Text>
+            </View>
+            <Ionicons name="sparkles-outline" size={20} color={colors.accentTeal} />
+          </View>
+          {outfitSummary ? (
+            <Text style={styles.outfitSummary} numberOfLines={3}>
+              {outfitSummary}
+            </Text>
+          ) : null}
+          <View style={styles.outfitItems}>
+            {outfitItems.map((item) => (
+              <View key={item.id} style={styles.outfitItem}>
+                <View style={styles.outfitImage}>
+                  {item.product?.imageUrl ? (
+                    <Image source={{ uri: item.product.imageUrl }} style={styles.outfitProductImage} resizeMode="cover" />
+                  ) : (
+                    <Ionicons name="shirt-outline" size={24} color={colors.primary} />
+                  )}
+                </View>
+                <View style={styles.outfitInfo}>
+                  <Text style={styles.outfitCategory}>{getOutfitCategoryLabel(item.category)}</Text>
+                  <Text style={styles.outfitBrand} numberOfLines={1}>{item.product?.brand ?? 'AID-FIT'}</Text>
+                  <Text style={styles.outfitName} numberOfLines={2}>{item.name}</Text>
+                  <Text style={styles.outfitPrice}>
+                    {item.product?.price === null || item.product?.price === undefined
+                      ? '가격 미정'
+                      : `${item.product.price.toLocaleString('ko-KR')}원`}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
 
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={20} color={colors.subText} />
@@ -455,6 +523,99 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  outfitCard: {
+    backgroundColor: colors.white,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.hairlineLight,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    gap: spacing.md,
+  },
+  outfitHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  outfitEyebrow: {
+    color: colors.accentTeal,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: fontFamily.semibold,
+    fontWeight: fontWeight.semibold,
+  },
+  outfitTitle: {
+    color: colors.text,
+    fontSize: 20,
+    lineHeight: 26,
+    fontFamily: fontFamily.heavy,
+    fontWeight: fontWeight.heavy,
+  },
+  outfitSummary: {
+    color: colors.subText,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: fontFamily.medium,
+    fontWeight: fontWeight.medium,
+  },
+  outfitItems: {
+    gap: spacing.sm,
+  },
+  outfitItem: {
+    minHeight: 86,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.hairlineLight,
+  },
+  outfitImage: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceFilter,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  outfitProductImage: {
+    width: 64,
+    height: 64,
+  },
+  outfitInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  outfitCategory: {
+    color: colors.primary,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: fontFamily.semibold,
+    fontWeight: fontWeight.semibold,
+  },
+  outfitBrand: {
+    color: colors.subText,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: fontFamily.medium,
+    fontWeight: fontWeight.medium,
+  },
+  outfitName: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: fontFamily.bold,
+    fontWeight: fontWeight.bold,
+  },
+  outfitPrice: {
+    color: colors.primary,
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: fontFamily.heavy,
+    fontWeight: fontWeight.heavy,
   },
   searchWrap: {
     flexDirection: 'row',

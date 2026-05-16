@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { colors } from '../constants/colors';
-import { fontFamily } from '../constants/typography';
+import { fontFamily, fontWeight } from '../constants/typography';
 import { HomeScreen } from '../screens/home/HomeScreen';
 import { ClosetScreen } from '../screens/closet/ClosetScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
@@ -31,7 +31,7 @@ export function MainTabs() {
         tabBarLabelStyle: {
           fontSize: 12,
           fontFamily: fontFamily.bold,
-          fontWeight: '700',
+          fontWeight: fontWeight.bold,
         },
         tabBarIcon: ({ color, size }) => {
           const iconName =

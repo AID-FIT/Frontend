@@ -11,18 +11,18 @@ export const typography = {
 
 export const fontWeight = {
   regular: '400',
-  medium: '500',
-  semibold: '600',
-  bold: '700',
-  heavy: '800',
+  medium: '400',
+  semibold: '500',
+  bold: '600',
+  heavy: '700',
 } as const;
 
 export const fontFamily = {
   regular: 'Pretendard-Regular',
-  medium: 'Pretendard-Medium',
-  semibold: 'Pretendard-SemiBold',
-  bold: 'Pretendard-Bold',
-  heavy: 'Pretendard-ExtraBold',
+  medium: 'Pretendard-Regular',
+  semibold: 'Pretendard-Medium',
+  bold: 'Pretendard-SemiBold',
+  heavy: 'Pretendard-Bold',
 } as const;
 
 export const letterSpacing = {

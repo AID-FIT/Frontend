@@ -1,5 +1,6 @@
 import type { Recommendation } from '../types/fashion';
 import { apiClient } from './apiClient';
+import { normalizeAssetUrl } from '../utils/url';
 
 type AgentRecommendationItem = {
   item_id: string;
@@ -51,7 +52,7 @@ function mapAgentRecommendation(response: AgentRecommendationResponse): Recommen
         id: item.item_id,
         brand: item.brand,
         price: item.price,
-        imageUrl: item.image_url,
+        imageUrl: normalizeAssetUrl(item.image_url),
       },
     })),
   };

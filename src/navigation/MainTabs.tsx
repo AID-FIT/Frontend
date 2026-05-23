@@ -18,9 +18,9 @@ export function MainTabs() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.subText,
         tabBarStyle: {
-          height: 76,
+          height: 82,
           paddingTop: 8,
-          paddingBottom: 18,
+          paddingBottom: 16,
           borderTopWidth: 0,
           backgroundColor: colors.white,
           shadowColor: colors.canvasDark,
@@ -30,6 +30,8 @@ export function MainTabs() {
         },
         tabBarLabelStyle: {
           fontSize: 12,
+          lineHeight: 16,
+          minHeight: 16,
           fontFamily: fontFamily.bold,
           fontWeight: fontWeight.bold,
         },

@@ -49,6 +49,11 @@ export function StyleRecommendScreen() {
   const handleRecommend = () => {
     setError('');
 
+    if (!user?.id) {
+      setError('로그인 후 추천을 받을 수 있어요.');
+      return;
+    }
+
     if (!imageUrl) {
       setError('먼저 옷 사진을 추가해 주세요.');
       return;
@@ -56,11 +61,13 @@ export function StyleRecommendScreen() {
 
     setIsLoading(true);
     createRecommendation({
-      prompt: prompt || '내 스타일에 어울리는 데일리 코디를 추천해줘',
-      image_url: imageUrl,
-      user_id: user?.id,
-      context: {
-        age_range: selectedAge,
+      user_id: user.id,
+      query: prompt || '내 스타일에 어울리는 데일리 코디를 추천해줘',
+      image_urls: imageUrl ? [imageUrl] : [],
+      closet_items: [],
+      use_closet_style: true,
+      user_profile: {
+        age_group: selectedAge || null,
         preferred_styles: preferredStyles,
       },
     })

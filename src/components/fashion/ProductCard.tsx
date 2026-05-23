@@ -15,7 +15,6 @@ export function ProductCard({ product }: ProductCardProps) {
   return (
     <View style={styles.card}>
       <View style={[styles.image, { backgroundColor: product.imageTone }]}>
-        {product.aiRecommended ? <AIRecommendBadge /> : null}
         {product.imageUrl ? (
           <Image source={{ uri: product.imageUrl }} style={styles.productImage} resizeMode="cover" />
         ) : (
@@ -23,6 +22,11 @@ export function ProductCard({ product }: ProductCardProps) {
             <Ionicons name="shirt-outline" size={38} color={colors.primary} />
           </View>
         )}
+        {product.aiRecommended ? (
+          <View style={styles.badge}>
+            <AIRecommendBadge />
+          </View>
+        ) : null}
       </View>
       <View style={styles.body}>
         <Text style={styles.brand} numberOfLines={1}>
@@ -56,8 +60,8 @@ const styles = StyleSheet.create({
   },
   image: {
     height: 150,
-    padding: spacing.md,
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   imageShape: {
     alignSelf: 'center',
@@ -69,11 +73,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   productImage: {
-    alignSelf: 'center',
-    width: 96,
-    height: 96,
-    borderRadius: radius.lg,
+    width: '100%',
+    height: '100%',
     backgroundColor: colors.surfaceFilter,
+  },
+  badge: {
+    position: 'absolute',
+    top: spacing.md,
+    left: spacing.md,
   },
   body: {
     padding: spacing.md,

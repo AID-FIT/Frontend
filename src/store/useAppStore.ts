@@ -1,15 +1,17 @@
 import { create } from 'zustand';
-import { setApiAccessToken } from '../services/apiClient';
+import { setApiAccessToken, setUnauthorizedHandler } from '../services/apiClient';
 import type { AuthUser } from '../services/authService';
+import {
+  clearSession,
+  defaultSession,
+  loadSession,
+  saveSession,
+  type PersistedSession,
+} from '../services/sessionStorage';
 
-type AppState = {
-  isAuthenticated: boolean;
-  accessToken: string | null;
-  user: AuthUser | null;
-  hasSeenOnboardingIntro: boolean;
-  isOnboarded: boolean;
-  selectedAge: string;
-  preferredStyles: string[];
+type AppState = PersistedSession & {
+  hasHydrated: boolean;
+  hydrate: () => Promise<void>;
   login: (accessToken: string, user: AuthUser) => void;
   syncUser: (user: AuthUser, profile?: { age_range?: string | null; styles?: string[] }) => void;
   completeOnboardingIntro: () => void;
@@ -17,61 +19,28 @@ type AppState = {
   resetSession: () => void;
 };
 
-type PersistedSession = Pick<
-  AppState,
-  'isAuthenticated' | 'accessToken' | 'user' | 'hasSeenOnboardingIntro' | 'isOnboarded' | 'selectedAge' | 'preferredStyles'
->;
-
-const SESSION_STORAGE_KEY = 'aidfit-session';
-
-const defaultSession: PersistedSession = {
-  isAuthenticated: false,
-  accessToken: null,
-  user: null,
-  hasSeenOnboardingIntro: false,
-  isOnboarded: false,
-  selectedAge: '',
-  preferredStyles: [],
-};
-
-function canUseLocalStorage() {
-  return typeof localStorage !== 'undefined';
-}
-
-function loadSession(): PersistedSession {
-  if (!canUseLocalStorage()) {
-    return defaultSession;
-  }
-
-  try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    return raw ? { ...defaultSession, ...JSON.parse(raw) } : defaultSession;
-  } catch {
-    return defaultSession;
-  }
-}
-
-function saveSession(session: PersistedSession) {
-  if (canUseLocalStorage()) {
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
-  }
-}
-
-function clearSession() {
-  if (canUseLocalStorage()) {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
-  }
-}
-
-const initialSession = loadSession();
-if (initialSession.accessToken) {
-  setApiAccessToken(initialSession.accessToken);
+function pickSession(state: AppState): PersistedSession {
+  return {
+    isAuthenticated: state.isAuthenticated,
+    accessToken: state.accessToken,
+    user: state.user,
+    hasSeenOnboardingIntro: state.hasSeenOnboardingIntro,
+    isOnboarded: state.isOnboarded,
+    selectedAge: state.selectedAge,
+    preferredStyles: state.preferredStyles,
+  };
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  ...initialSession,
+  ...defaultSession,
+  hasHydrated: false,
+  hydrate: async () => {
+    const session = await loadSession();
+    setApiAccessToken(session.accessToken);
+    set({ ...session, hasHydrated: true });
+  },
   login: (accessToken, user) => {
-    const session = {
+    const session: PersistedSession = {
       accessToken,
       user,
       isAuthenticated: true,
@@ -81,12 +50,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       preferredStyles: get().preferredStyles,
     };
     setApiAccessToken(accessToken);
-    saveSession(session);
+    void saveSession(session);
     set(session);
   },
   syncUser: (user, profile) => {
     const current = get();
-    const session = {
+    const session: PersistedSession = {
       accessToken: current.accessToken,
       user,
       isAuthenticated: true,
@@ -96,18 +65,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       preferredStyles: profile?.styles ?? current.preferredStyles,
     };
     setApiAccessToken(current.accessToken);
-    saveSession(session);
+    void saveSession(session);
     set(session);
   },
   completeOnboardingIntro: () => {
-    const session = { ...get(), hasSeenOnboardingIntro: true };
-    saveSession(session);
     set({ hasSeenOnboardingIntro: true });
+    void saveSession(pickSession(get()));
   },
   completeOnboarding: (age, styles, user) => {
     const current = get();
     const nextUser = user ?? (current.user ? { ...current.user, role: 'user' } : current.user);
-    const session = {
+    const session: PersistedSession = {
       accessToken: current.accessToken,
       user: nextUser,
       isAuthenticated: current.isAuthenticated,
@@ -116,12 +84,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       isOnboarded: true,
       hasSeenOnboardingIntro: true,
     };
-    saveSession(session);
+    void saveSession(session);
     set(session);
   },
   resetSession: () => {
     setApiAccessToken(null);
-    clearSession();
-    set(defaultSession);
+    void clearSession();
+    set({ ...defaultSession });
   },
 }));
+
+// 401 응답 시 스토어 세션을 정리한다(apiClient → store 순환 참조 방지).
+setUnauthorizedHandler(() => {
+  useAppStore.getState().resetSession();
+});

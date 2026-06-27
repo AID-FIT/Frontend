@@ -47,7 +47,7 @@ export type RecommendationCreatePayload = {
   } | null;
 };
 
-function mapAgentRecommendation(response: AgentRecommendationResponse): Recommendation {
+export function mapAgentRecommendation(response: AgentRecommendationResponse): Recommendation {
   const styleGuide = response.style_guide;
   const summary = styleGuide ? [response.message, ...styleGuide.tips].join('\n') : response.message;
 

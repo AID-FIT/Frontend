@@ -2,10 +2,12 @@ import { NavigationContainer } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
+import { useEffect } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { colors } from './src/constants/colors';
+import { useAppStore } from './src/store/useAppStore';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -18,7 +20,14 @@ export default function App() {
     'Pretendard-ExtraBold': require('./assets/fonts/Pretendard-ExtraBold.otf'),
   });
 
-  if (!fontsLoaded) {
+  const hasHydrated = useAppStore((state) => state.hasHydrated);
+  const hydrate = useAppStore((state) => state.hydrate);
+
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
+
+  if (!fontsLoaded || !hasHydrated) {
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 

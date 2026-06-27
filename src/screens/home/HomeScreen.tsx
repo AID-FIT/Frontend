@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { ProductCard } from '../../components/fashion/ProductCard';
@@ -11,7 +11,7 @@ import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
 import { getHomeRecommendation } from '../../services/recommendationService';
-import type { OutfitItem, Product, Recommendation } from '../../types/fashion';
+import type { Product, Recommendation } from '../../types/fashion';
 
 const categories = ['캐주얼', '여름', '미니멀', '데이트룩'];
 const heroTitle = '오늘의 코디';
@@ -21,32 +21,6 @@ const edgeThreshold = 24;
 const bottomPullThreshold = 36;
 const refreshLimitPerSession = 5;
 const refreshCooldownMs = 5 * 60 * 1000;
-const outfitSetPreviewCount = 3;
-const outfitLoopMultiplier = 21;
-const outfitCategoryOrder = ['cap', 'hat', 'top', 'shirt', 'outer', 'pants', 'bottom', 'shoes', 'bag', 'accessory'];
-const outfitCategoryLabels: Record<string, string> = {
-  cap: '모자',
-  hat: '모자',
-  top: '상의',
-  shirt: '상의',
-  outer: '아우터',
-  pants: '하의',
-  bottom: '하의',
-  shoes: '신발',
-  bag: '가방',
-  accessory: '액세서리',
-};
-
-type OutfitSet = {
-  id: string;
-  summary: string;
-  items: OutfitItem[];
-};
-
-type LoopOutfitSet = OutfitSet & {
-  loopKey: string;
-  sourceIndex: number;
-};
 
 function hexToRgb(hex: string) {
   const value = hex.replace('#', '');
@@ -83,24 +57,10 @@ function GradientHeroTitle() {
   );
 }
 
-function getOutfitCategoryRank(category: string) {
-  const normalizedCategory = category.toLowerCase();
-  const rank = outfitCategoryOrder.indexOf(normalizedCategory);
-  return rank === -1 ? outfitCategoryOrder.length : rank;
-}
-
-function getOutfitCategoryLabel(category: string) {
-  return outfitCategoryLabels[category.toLowerCase()] ?? category;
-}
-
 export function HomeScreen() {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(categories[0]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [outfitSets, setOutfitSets] = useState<OutfitSet[]>([]);
-  const [activeOutfitIndex, setActiveOutfitIndex] = useState(0);
-  const [outfitCarouselWidth, setOutfitCarouselWidth] = useState(0);
-  const [isOutfitExpanded, setIsOutfitExpanded] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshingRecommendations, setIsRefreshingRecommendations] = useState(false);
   const [isBottomPullArmed, setIsBottomPullArmed] = useState(false);
@@ -110,7 +70,6 @@ export function HomeScreen() {
   const requestKeyRef = useRef(0);
   const refreshSeedRef = useRef(0);
   const listRef = useRef<FlatList<Product>>(null);
-  const outfitCarouselRef = useRef<FlatList<LoopOutfitSet>>(null);
   const scrollOffsetRef = useRef(0);
   const distanceFromBottomRef = useRef(Number.POSITIVE_INFINITY);
   const refreshCountRef = useRef(0);
@@ -123,16 +82,6 @@ export function HomeScreen() {
     isBottomPullArmedRef.current = nextValue;
     setIsBottomPullArmed(nextValue);
   }, []);
-
-  const loopedOutfitSets = useMemo<LoopOutfitSet[]>(() => (
-    Array.from({ length: outfitLoopMultiplier }).flatMap((_, loopIndex) => (
-      outfitSets.map((outfitSet, sourceIndex) => ({
-        ...outfitSet,
-        sourceIndex,
-        loopKey: `${outfitSet.id}-${loopIndex}`,
-      }))
-    ))
-  ), [outfitSets]);
 
   const recommendationToProducts = useCallback((recommendation: Recommendation, refreshSeed: number): Product[] => (
     recommendation.items.map((item, index) => ({
@@ -148,43 +97,6 @@ export function HomeScreen() {
       aiRecommended: true,
     }))
   ), []);
-
-  const recommendationToOutfitItems = useCallback((recommendation: Recommendation): OutfitItem[] => (
-    [...recommendation.items]
-      .sort((left, right) => getOutfitCategoryRank(left.category) - getOutfitCategoryRank(right.category))
-      .slice(0, 5)
-  ), []);
-
-  const recommendationToOutfitSet = useCallback((recommendation: Recommendation, refreshSeed: number): OutfitSet => ({
-    id: `${recommendation.id}-${refreshSeed}`,
-    summary: recommendation.summary,
-    items: recommendationToOutfitItems(recommendation),
-  }), [recommendationToOutfitItems]);
-
-  const hydrateOutfitSetPreviews = useCallback((baseQuery: string, baseSeed: number, firstRecommendation: Recommendation, requestKey: number) => {
-    const firstSet = recommendationToOutfitSet(firstRecommendation, baseSeed);
-    setOutfitSets([firstSet]);
-    setActiveOutfitIndex(0);
-    setIsOutfitExpanded(false);
-
-    const previewSeeds = Array.from({ length: outfitSetPreviewCount - 1 }, (_, index) => baseSeed + index + 1);
-    Promise.all(
-      previewSeeds.map((previewSeed) => getHomeRecommendation(baseQuery.trim(), previewSeed)
-        .then((recommendation) => recommendationToOutfitSet(recommendation, previewSeed))),
-    )
-      .then((previewSets) => {
-        if (requestKeyRef.current !== requestKey) {
-          return;
-        }
-
-        setOutfitSets([firstSet, ...previewSets]);
-      })
-      .catch(() => {
-        if (requestKeyRef.current === requestKey) {
-          setOutfitSets([firstSet]);
-        }
-      });
-  }, [recommendationToOutfitSet]);
 
   const loadProducts = useCallback((nextQuery = '', refreshSeed = 0, showInitialLoader = true) => {
     const requestKey = requestKeyRef.current + 1;
@@ -205,7 +117,6 @@ export function HomeScreen() {
 
         const nextProducts = recommendationToProducts(recommendation, refreshSeed);
         setProducts(nextProducts);
-        hydrateOutfitSetPreviews(nextQuery, refreshSeed, recommendation, requestKey);
         refreshSeedRef.current = refreshSeed;
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
       })
@@ -220,7 +131,7 @@ export function HomeScreen() {
         setIsInitialLoading(false);
         setIsRefreshingRecommendations(false);
       });
-  }, [hydrateOutfitSetPreviews, recommendationToProducts, setBottomPullArmed]);
+  }, [recommendationToProducts, setBottomPullArmed]);
 
   const refreshRecommendationSet = useCallback(() => {
     loadProducts(query, refreshSeedRef.current + 1, false);
@@ -322,51 +233,6 @@ export function HomeScreen() {
     setBottomPullArmed(false);
   }, [requestRefreshRecommendationSet, setBottomPullArmed]);
 
-  const handleOutfitCarouselLayout = useCallback((event: LayoutChangeEvent) => {
-    setOutfitCarouselWidth(event.nativeEvent.layout.width);
-  }, []);
-
-  const normalizeOutfitLoopIndex = useCallback((absoluteIndex: number) => {
-    if (outfitSets.length === 0) {
-      return 0;
-    }
-
-    return ((absoluteIndex % outfitSets.length) + outfitSets.length) % outfitSets.length;
-  }, [outfitSets.length]);
-
-  const handleOutfitMomentumEnd = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (outfitCarouselWidth <= 0 || outfitSets.length === 0) {
-      return;
-    }
-
-    const absoluteIndex = Math.round(event.nativeEvent.contentOffset.x / outfitCarouselWidth);
-    const sourceIndex = normalizeOutfitLoopIndex(absoluteIndex);
-    setActiveOutfitIndex(sourceIndex);
-
-    const loopStart = outfitSets.length;
-    const loopEnd = loopedOutfitSets.length - outfitSets.length;
-    if (absoluteIndex < loopStart || absoluteIndex >= loopEnd) {
-      const middleLoopIndex = Math.floor(outfitLoopMultiplier / 2) * outfitSets.length + sourceIndex;
-      outfitCarouselRef.current?.scrollToIndex({ index: middleLoopIndex, animated: false });
-    }
-  }, [loopedOutfitSets.length, normalizeOutfitLoopIndex, outfitCarouselWidth, outfitSets.length]);
-
-  const handleOutfitScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (outfitCarouselWidth <= 0 || outfitSets.length === 0) {
-      return;
-    }
-
-    const scrollProgress = event.nativeEvent.contentOffset.x / outfitCarouselWidth;
-    const nextIndex = normalizeOutfitLoopIndex(Math.round(scrollProgress));
-    setActiveOutfitIndex((currentIndex) => {
-      return currentIndex === nextIndex ? currentIndex : nextIndex;
-    });
-  }, [normalizeOutfitLoopIndex, outfitCarouselWidth, outfitSets.length]);
-
-  const getOutfitItemImageUrl = useCallback((outfitSet: OutfitSet) => (
-    outfitSet.items.find((item) => item.product?.imageUrl)?.product?.imageUrl ?? null
-  ), []);
-
   const wheelHandlers = {
     onWheel: (event: { nativeEvent?: { deltaY?: number }; deltaY?: number }) => {
       const deltaY = event.nativeEvent?.deltaY ?? event.deltaY ?? 0;
@@ -388,15 +254,6 @@ export function HomeScreen() {
   useEffect(() => {
     loadProducts('', 0, true);
   }, [loadProducts]);
-
-  useEffect(() => {
-    if (outfitCarouselWidth <= 0 || outfitSets.length === 0 || loopedOutfitSets.length === 0) {
-      return;
-    }
-
-    const middleLoopIndex = Math.floor(outfitLoopMultiplier / 2) * outfitSets.length;
-    outfitCarouselRef.current?.scrollToIndex({ index: middleLoopIndex, animated: false });
-  }, [loopedOutfitSets.length, outfitCarouselWidth, outfitSets.length]);
 
   useEffect(() => () => {
     if (wheelRefreshTimerRef.current) {
@@ -437,95 +294,6 @@ export function HomeScreen() {
             <Ionicons name="shirt-outline" size={28} color={colors.accentTeal} />
           </View>
         </View>
-        {outfitSets.length > 0 ? (
-          <View style={styles.outfitInHero}>
-            <View style={styles.outfitHeader}>
-              <Text style={styles.outfitEyebrow}>AI 추천 세트</Text>
-              <Ionicons name="sparkles-outline" size={18} color={colors.accentTeal} />
-            </View>
-            <View style={styles.outfitCarousel} onLayout={handleOutfitCarouselLayout}>
-              <FlatList
-                ref={outfitCarouselRef}
-                data={loopedOutfitSets}
-                horizontal
-                pagingEnabled
-                nestedScrollEnabled
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={(item) => item.loopKey}
-                onScroll={handleOutfitScroll}
-                onMomentumScrollEnd={handleOutfitMomentumEnd}
-                scrollEventThrottle={16}
-                getItemLayout={(_, index) => ({
-                  length: outfitCarouselWidth || 1,
-                  offset: (outfitCarouselWidth || 1) * index,
-                  index,
-                })}
-                renderItem={({ item: outfitSet }) => (
-                  <View style={[styles.outfitPage, { width: outfitCarouselWidth || 1 }]}>
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => setIsOutfitExpanded((current) => !current)}
-                      style={styles.outfitPreview}
-                    >
-                      <View style={styles.outfitModelFrame}>
-                        {getOutfitItemImageUrl(outfitSet) ? (
-                          <Image source={{ uri: getOutfitItemImageUrl(outfitSet) ?? '' }} style={styles.outfitModelImage} resizeMode="cover" />
-                        ) : (
-                          <View style={styles.outfitModelPlaceholder}>
-                            <Ionicons name="body-outline" size={64} color={colors.primary} />
-                          </View>
-                        )}
-                      </View>
-                    </Pressable>
-                    {isOutfitExpanded ? (
-                      <View style={styles.outfitDetails}>
-                        {outfitSet.summary ? (
-                          <Text style={styles.outfitSummary} numberOfLines={2}>
-                            {outfitSet.summary}
-                          </Text>
-                        ) : null}
-                        <View style={styles.outfitItems}>
-                          {outfitSet.items.map((item) => (
-                            <View key={item.id} style={styles.outfitItem}>
-                              <View style={styles.outfitImage}>
-                                {item.product?.imageUrl ? (
-                                  <Image source={{ uri: item.product.imageUrl }} style={styles.outfitProductImage} resizeMode="cover" />
-                                ) : (
-                                  <Ionicons name="shirt-outline" size={24} color={colors.primary} />
-                                )}
-                              </View>
-                              <View style={styles.outfitInfo}>
-                                <Text style={styles.outfitCategory}>{getOutfitCategoryLabel(item.category)}</Text>
-                                <Text style={styles.outfitBrand} numberOfLines={1}>{item.product?.brand ?? 'AID-FIT'}</Text>
-                                <Text style={styles.outfitName} numberOfLines={2}>{item.name}</Text>
-                                <Text style={styles.outfitPrice}>
-                                  {item.product?.price === null || item.product?.price === undefined
-                                    ? '가격 미정'
-                                    : `${item.product.price.toLocaleString('ko-KR')}원`}
-                                </Text>
-                              </View>
-                            </View>
-                          ))}
-                        </View>
-                      </View>
-                    ) : null}
-                  </View>
-                )}
-              />
-            </View>
-            <View style={styles.outfitPagination}>
-              {outfitSets.map((item, index) => (
-                <View
-                  key={item.id}
-                  style={[
-                    styles.outfitPaginationDot,
-                    index === activeOutfitIndex ? styles.outfitPaginationDotActive : null,
-                  ]}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
       </LinearGradient>
 
       <View style={styles.searchWrap}>
@@ -666,137 +434,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  outfitInHero: {
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  outfitHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  outfitEyebrow: {
-    color: colors.accentTeal,
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: fontFamily.semibold,
-    fontWeight: fontWeight.semibold,
-  },
-  outfitSummary: {
-    color: colors.subText,
-    fontSize: 13,
-    lineHeight: 19,
-    fontFamily: fontFamily.medium,
-    fontWeight: fontWeight.medium,
-  },
-  outfitItems: {
-    gap: spacing.sm,
-  },
-  outfitCarousel: {
-    minHeight: 256,
-  },
-  outfitPage: {
-    gap: spacing.md,
-  },
-  outfitPreview: {
-    minHeight: 220,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceFilter,
-    overflow: 'hidden',
-  },
-  outfitModelFrame: {
-    height: 220,
-    backgroundColor: colors.navySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  outfitModelImage: {
-    width: '100%',
-    height: '100%',
-  },
-  outfitModelPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  outfitDetails: {
-    gap: spacing.md,
-  },
-  outfitPagination: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingTop: spacing.xs,
-  },
-  outfitPaginationDot: {
-    width: 7,
-    height: 7,
-    borderRadius: radius.pill,
-    backgroundColor: colors.ashLight,
-  },
-  outfitPaginationDotActive: {
-    width: 22,
-    backgroundColor: colors.accentTeal,
-  },
-  outfitItem: {
-    minHeight: 86,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.hairlineLight,
-  },
-  outfitImage: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceFilter,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  outfitProductImage: {
-    width: 64,
-    height: 64,
-  },
-  outfitInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  outfitCategory: {
-    color: colors.primary,
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: fontFamily.semibold,
-    fontWeight: fontWeight.semibold,
-  },
-  outfitBrand: {
-    color: colors.subText,
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: fontFamily.medium,
-    fontWeight: fontWeight.medium,
-  },
-  outfitName: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 20,
-    fontFamily: fontFamily.bold,
-    fontWeight: fontWeight.bold,
-  },
-  outfitPrice: {
-    color: colors.primary,
-    fontSize: 14,
-    lineHeight: 20,
-    fontFamily: fontFamily.heavy,
-    fontWeight: fontWeight.heavy,
   },
   searchWrap: {
     flexDirection: 'row',

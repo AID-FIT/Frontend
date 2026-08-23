@@ -248,61 +248,73 @@ export function StyleRecommendScreen() {
   };
 
   return (
-    // 입력 바의 구분선이 화면 끝까지 닿도록 좌우 여백은 각 영역에서 준다.
+    // 좌우 여백은 각 영역에서 준다. 넓은 화면에서는 대화가 한쪽으로 늘어지지
+    // 않도록 가운데 정렬된 고정 폭 안에 담는다.
     <ScreenContainer scroll={false} padded={false}>
-      <View style={styles.header}>
-        <Text style={styles.title}>스타일 추천</Text>
+      <View style={styles.page}>
+        <View style={styles.header}>
+          <Text style={styles.title}>스타일 추천</Text>
+        </View>
+
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessage}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={scrollToEnd}
+            ListHeaderComponent={
+              messages.length === 0 && !isBootstrapping ? (
+                <View style={styles.intro}>
+                  <NoticeBanner
+                    icon="shirt-outline"
+                    title="사진 한 장에 옷은 한 벌만 나오게 찍어주세요"
+                    description={`여러 벌이 함께 담기면 옷을 정확히 알아보지 못해요. 한 벌씩 나눠 찍어 최대 ${MAX_ATTACHMENTS}장까지 첨부할 수 있어요.`}
+                  />
+                  <ChatBubble role="assistant" content={GREETING} />
+                </View>
+              ) : null
+            }
+            ListFooterComponent={isSending ? <TypingIndicator /> : null}
+          />
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          <ChatComposer
+            value={draft}
+            attachments={attachments}
+            pendingAttachmentCount={uploadingCount}
+            canSend={canSend}
+            isSending={isSending}
+            isUploading={isUploading}
+            canStartNewConversation={messages.length > 0 && !isSending}
+            onChangeText={setDraft}
+            onAttach={handleAttach}
+            onNewConversation={handleNewConversation}
+            onRemoveAttachment={handleRemoveAttachment}
+            onSend={handleSend}
+          />
+        </KeyboardAvoidingView>
       </View>
-
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={renderMessage}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={scrollToEnd}
-          ListHeaderComponent={
-            messages.length === 0 && !isBootstrapping ? (
-              <View style={styles.intro}>
-                <NoticeBanner
-                  icon="shirt-outline"
-                  title="사진 한 장에 옷은 한 벌만 나오게 찍어주세요"
-                  description={`여러 벌이 함께 담기면 옷을 정확히 알아보지 못해요. 한 벌씩 나눠 찍어 최대 ${MAX_ATTACHMENTS}장까지 첨부할 수 있어요.`}
-                />
-                <ChatBubble role="assistant" content={GREETING} />
-              </View>
-            ) : null
-          }
-          ListFooterComponent={isSending ? <TypingIndicator /> : null}
-        />
-
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-        <ChatComposer
-          value={draft}
-          attachments={attachments}
-          pendingAttachmentCount={uploadingCount}
-          canSend={canSend}
-          isSending={isSending}
-          isUploading={isUploading}
-          canStartNewConversation={messages.length > 0 && !isSending}
-          onChangeText={setDraft}
-          onAttach={handleAttach}
-          onNewConversation={handleNewConversation}
-          onRemoveAttachment={handleRemoveAttachment}
-          onSend={handleSend}
-        />
-      </KeyboardAvoidingView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  // 대화는 한 줄 길이가 너무 길어지면 읽기 어렵다. 넓은 화면에서도 폭을 묶고
+  // 가운데로 모아, 입력 바 좌우 버튼이 양 끝으로 벌어지지 않게 한다.
+  page: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+    minHeight: 0,
+  },
   flex: {
     flex: 1,
     minHeight: 0,

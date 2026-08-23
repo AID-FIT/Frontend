@@ -7,6 +7,9 @@ import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight } from '../../constants/typography';
 
+// 첨부 버튼 / 입력창 / 전송 버튼이 공유하는 높이.
+const BUTTON_SIZE = 40;
+
 type ChatComposerProps = {
   value: string;
   attachments: string[];
@@ -137,6 +140,8 @@ export function ChatComposer({
           placeholder="어떤 스타일을 찾고 있나요?"
           placeholderTextColor={colors.subText}
           multiline
+          // 웹의 textarea는 기본 2줄이라, 한 줄에서 시작하도록 명시한다.
+          numberOfLines={1}
           style={styles.input}
           editable={!isSending}
           onSubmitEditing={() => canSend && onSend()}
@@ -166,7 +171,7 @@ export function ChatComposer({
 const styles = StyleSheet.create({
   wrap: {
     gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
     borderTopWidth: 1,
@@ -183,7 +188,7 @@ const styles = StyleSheet.create({
   },
   popover: {
     position: 'absolute',
-    left: spacing.xl,
+    left: spacing.lg,
     bottom: '100%',
     marginBottom: spacing.xs,
     borderRadius: radius.lg,
@@ -262,37 +267,37 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    // 입력창이 여러 줄로 늘어나도 좌우 버튼은 세로 가운데를 유지한다.
+    alignItems: 'center',
     gap: spacing.sm,
   },
+  // 좌우 버튼과 입력창의 높이를 BUTTON_SIZE로 맞춰 한 줄로 정렬한다.
   iconButton: {
-    width: 42,
-    height: 42,
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
     borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
+    backgroundColor: colors.navySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconButtonActive: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   iconButtonPressed: {
     opacity: 0.82,
   },
   input: {
     flex: 1,
-    minHeight: 42,
-    maxHeight: 120,
-    borderRadius: radius.xl,
+    minHeight: BUTTON_SIZE,
+    maxHeight: 132,
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.white,
+    // 흰 배경 위에서 테두리만으로는 입력창이 거의 드러나지 않는다.
+    backgroundColor: colors.surfaceCard,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    paddingTop: 11,
+    paddingBottom: 11,
     color: colors.text,
     fontSize: 15,
     lineHeight: 20,
@@ -300,9 +305,9 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   sendButton: {
-    minWidth: 42,
-    height: 42,
-    paddingHorizontal: spacing.md,
+    minWidth: BUTTON_SIZE,
+    height: BUTTON_SIZE,
+    paddingHorizontal: spacing.sm,
     borderRadius: radius.pill,
     backgroundColor: colors.primary,
     alignItems: 'center',

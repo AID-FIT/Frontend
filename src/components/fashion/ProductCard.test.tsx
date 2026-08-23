@@ -34,6 +34,28 @@ function card(tree: renderer.ReactTestRenderer): ReactTestInstance {
   return tree.root.find((node) => node.props.onPress !== undefined && node.props.disabled !== undefined);
 }
 
+function textsOf(tree: renderer.ReactTestRenderer): string[] {
+  return tree.root
+    .findAll((node) => typeof node.type === 'string' && node.children.length > 0)
+    .flatMap((node) => node.children)
+    .filter((child): child is string => typeof child === 'string');
+}
+
+describe('ProductCard reason', () => {
+  it('shows why the AI picked this item', () => {
+    // 백엔드가 보내 주는 설명을 버리면 사용자는 결과의 근거를 볼 수 없다.
+    const tree = render(<ProductCard product={product({ reason: '검정 상의와 잘 어울려요' })} />);
+
+    expect(textsOf(tree)).toContain('검정 상의와 잘 어울려요');
+  });
+
+  it('takes no space when there is no reason', () => {
+    const tree = render(<ProductCard product={product({ reason: null })} />);
+
+    expect(textsOf(tree)).not.toContain('검정 상의와 잘 어울려요');
+  });
+});
+
 describe('ProductCard link', () => {
   let openURL: jest.SpyInstance;
 

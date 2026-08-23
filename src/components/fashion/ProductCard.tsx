@@ -44,6 +44,12 @@ export function ProductCard({ product }: ProductCardProps) {
           {product.name}
         </Text>
         <Text style={styles.price}>{product.price}</Text>
+        {/* AI가 이 상품을 고른 이유. 없으면 자리를 차지하지 않는다. */}
+        {product.reason ? (
+          <Text style={styles.reason} numberOfLines={2}>
+            {product.reason}
+          </Text>
+        ) : null}
         <View style={styles.tagRow}>
           {product.tags.slice(0, 2).map((tag) => (
             <View key={tag} style={styles.tag}>
@@ -116,6 +122,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: fontFamily.heavy,
     fontWeight: fontWeight.heavy,
+  },
+  reason: {
+    color: colors.subText,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: spacing.xs,
   },
   tagRow: {
     flexDirection: 'row',

@@ -1,70 +1,123 @@
-import { useState } from 'react';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useNavigation } from '@react-navigation/native';
-import { StyleSheet, Text, View } from 'react-native';
-import { AppButton } from '../../components/common/AppButton';
-import { AppTextInput } from '../../components/common/AppTextInput';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { NoticeBanner } from '../../components/common/NoticeBanner';
-import { ImageUploadBox } from '../../components/fashion/ImageUploadBox';
-import { SelectedImageGrid } from '../../components/fashion/SelectedImageGrid';
+import { ChatBubble } from '../../components/chat/ChatBubble';
+import { ChatComposer } from '../../components/chat/ChatComposer';
+import { ChatRecommendationList } from '../../components/chat/ChatRecommendationList';
+import { TypingIndicator } from '../../components/chat/TypingIndicator';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { colors } from '../../constants/colors';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
+import {
+  createConversation,
+  listConversations,
+  listMessages,
+  sendMessage,
+  type ChatMessage,
+} from '../../services/chatService';
 import { getImageFingerprint, pickImageFiles, uploadImage } from '../../services/imageService';
-import { createRecommendation } from '../../services/recommendationService';
-import { useAppStore } from '../../store/useAppStore';
-import type { RecommendStackParamList } from '../../types/navigation';
 
-type Navigation = NativeStackNavigationProp<RecommendStackParamList, 'StyleRecommend'>;
-
-const MAX_IMAGES = 8;
+const MAX_ATTACHMENTS = 8;
+const GREETING =
+  '안녕하세요! 옷 사진을 올리거나 원하는 스타일을 말씀해 주시면 어울리는 코디를 찾아드릴게요.';
 
 export function StyleRecommendScreen() {
-  const navigation = useNavigation<Navigation>();
-  const user = useAppStore((state) => state.user);
-  const selectedAge = useAppStore((state) => state.selectedAge);
-  const preferredStyles = useAppStore((state) => state.preferredStyles);
-  const [prompt, setPrompt] = useState('');
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
-  // imageUrls와 같은 순서로 유지되는 내용 지문 목록.
-  const [selectedFingerprints, setSelectedFingerprints] = useState<string[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [draft, setDraft] = useState('');
+  const [attachments, setAttachments] = useState<string[]>([]);
+  // attachments와 같은 순서로 유지되는 내용 지문 목록.
+  const [fingerprints, setFingerprints] = useState<string[]>([]);
   const [uploadingCount, setUploadingCount] = useState(0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [error, setError] = useState('');
+  const listRef = useRef<FlatList<ChatMessage>>(null);
 
-  const hasImages = imageUrls.length > 0;
   const isUploading = uploadingCount > 0;
-  const isBusy = isUploading || isSubmitting;
+  const canSend = Boolean(conversationId) && !isSending && !isUploading && draft.trim().length > 0;
 
-  const handlePickImages = async () => {
+  // 가장 최근 대화를 이어 쓰고, 없으면 새로 만든다.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const conversations = await listConversations();
+        const conversation = conversations[0] ?? (await createConversation());
+        if (cancelled) {
+          return;
+        }
+
+        setConversationId(conversation.id);
+        const history = await listMessages(conversation.id, { limit: 50 });
+        if (!cancelled) {
+          setMessages(history.messages);
+        }
+      } catch {
+        if (!cancelled) {
+          setError('대화를 불러오지 못했어요.');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsBootstrapping(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const scrollToEnd = useCallback(() => {
+    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+  }, []);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      scrollToEnd();
+    }
+  }, [messages.length, scrollToEnd]);
+
+  const handleAttach = async () => {
     setError('');
     const files = await pickImageFiles();
     if (files.length === 0) {
       return;
     }
 
-    const remainingSlots = MAX_IMAGES - imageUrls.length;
+    const remainingSlots = MAX_ATTACHMENTS - attachments.length;
     if (remainingSlots <= 0) {
-      setError(`사진은 최대 ${MAX_IMAGES}장까지 추가할 수 있어요.`);
+      setError(`사진은 최대 ${MAX_ATTACHMENTS}장까지 첨부할 수 있어요.`);
       return;
     }
 
     // 업로드 전에 내용 지문으로 중복을 걸러낸다.
-    // 이미 고른 사진, 그리고 이번에 한꺼번에 고른 것들 사이의 중복까지 본다.
-    const fingerprints = await Promise.all(files.map((file) => getImageFingerprint(file)));
-    const seen = new Set(selectedFingerprints);
-    const unique: { file: File; fingerprint: string }[] = [];
+    const picked = await Promise.all(
+      files.map(async (file) => ({ file, fingerprint: await getImageFingerprint(file) })),
+    );
+    const seen = new Set(fingerprints);
+    const unique: typeof picked = [];
     let duplicateCount = 0;
 
-    files.forEach((file, index) => {
-      const fingerprint = fingerprints[index];
-      if (seen.has(fingerprint)) {
+    picked.forEach((entry) => {
+      if (seen.has(entry.fingerprint)) {
         duplicateCount += 1;
         return;
       }
-      seen.add(fingerprint);
-      unique.push({ file, fingerprint });
+      seen.add(entry.fingerprint);
+      unique.push(entry);
     });
 
     if (unique.length === 0) {
@@ -73,11 +126,10 @@ export function StyleRecommendScreen() {
     }
 
     const accepted = unique.slice(0, remainingSlots);
-
     if (duplicateCount > 0) {
       setError(`이미 같은 이미지가 업로드 되어 있습니다! (${duplicateCount}장 제외)`);
     } else if (accepted.length < unique.length) {
-      setError(`사진은 최대 ${MAX_IMAGES}장까지라 ${accepted.length}장만 추가했어요.`);
+      setError(`사진은 최대 ${MAX_ATTACHMENTS}장까지라 ${accepted.length}장만 첨부했어요.`);
     }
 
     setUploadingCount((count) => count + accepted.length);
@@ -93,7 +145,7 @@ export function StyleRecommendScreen() {
       }
       // 백엔드도 내용 해시로 경로를 정하므로, 지문이 달라도 같은 URL이 올 수 있다.
       const { image_url: url } = result.value;
-      if (uploaded.includes(url) || imageUrls.includes(url)) {
+      if (uploaded.includes(url) || attachments.includes(url)) {
         return;
       }
       uploaded.push(url);
@@ -102,164 +154,226 @@ export function StyleRecommendScreen() {
 
     const failedCount = results.filter((result) => result.status === 'rejected').length;
 
-    setImageUrls((current) => [...current, ...uploaded]);
-    setSelectedFingerprints((current) => [...current, ...uploadedFingerprints]);
+    setAttachments((current) => [...current, ...uploaded]);
+    setFingerprints((current) => [...current, ...uploadedFingerprints]);
     setUploadingCount((count) => Math.max(0, count - accepted.length));
 
     if (failedCount > 0) {
       setError(
-        uploaded.length > 0
-          ? `${failedCount}장은 업로드하지 못했어요.`
-          : '이미지 업로드에 실패했어요.',
+        uploaded.length > 0 ? `${failedCount}장은 첨부하지 못했어요.` : '이미지 업로드에 실패했어요.',
       );
     }
   };
 
-  const handleRemoveImage = (target: string) => {
+  const handleRemoveAttachment = (target: string) => {
     setError('');
-    const index = imageUrls.indexOf(target);
+    const index = attachments.indexOf(target);
     if (index === -1) {
       return;
     }
-    setImageUrls((current) => current.filter((imageUrl) => imageUrl !== target));
-    setSelectedFingerprints((current) => current.filter((_, i) => i !== index));
+    setAttachments((current) => current.filter((imageUrl) => imageUrl !== target));
+    setFingerprints((current) => current.filter((_, i) => i !== index));
   };
 
-  const handleRecommend = () => {
+  const handleSend = async () => {
+    if (!conversationId || !canSend) {
+      return;
+    }
+
+    const query = draft.trim();
+    const imageUrls = attachments;
     setError('');
+    setIsSending(true);
 
-    if (!user?.id) {
-      setError('로그인 후 추천을 받을 수 있어요.');
-      return;
-    }
-
-    if (!hasImages) {
-      setError('먼저 옷 사진을 추가해 주세요.');
-      return;
-    }
-
-    setIsSubmitting(true);
-    createRecommendation({
-      user_id: user.id,
-      query: prompt || '내 스타일에 어울리는 데일리 코디를 추천해줘',
-      image_urls: imageUrls,
-      closet_items: [],
-      use_closet_style: true,
-      user_profile: {
-        age_group: selectedAge || null,
-        preferred_styles: preferredStyles,
+    // 보낸 말풍선은 서버 응답을 기다리지 않고 먼저 띄운다.
+    const pendingId = `pending-${Date.now()}`;
+    setMessages((current) => [
+      ...current,
+      {
+        id: pendingId,
+        conversation_id: conversationId,
+        role: 'user',
+        content: query,
+        payload: { image_urls: imageUrls },
+        created_at: new Date().toISOString(),
       },
-    })
-      .then((recommendation) => {
-        navigation.navigate('RecommendationResult', {
-          recommendationId: recommendation.id,
-          recommendation,
-        });
-      })
-      .catch(() => {
-        setError('추천 생성에 실패했어요.');
-      })
-      .finally(() => {
-        setIsSubmitting(false);
-      });
+    ]);
+    setDraft('');
+    setAttachments([]);
+    setFingerprints([]);
+
+    try {
+      const result = await sendMessage(conversationId, query, imageUrls);
+      setMessages((current) => [
+        // 낙관적으로 띄운 말풍선을 서버가 확정한 id로 교체한다.
+        ...current.map((message) =>
+          message.id === pendingId ? { ...message, id: result.user_message_id } : message,
+        ),
+        {
+          id: result.assistant_message_id,
+          conversation_id: conversationId,
+          role: 'assistant',
+          content: result.response.message,
+          payload: result.response,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } catch {
+      // 실패하면 방금 띄운 말풍선을 되돌리고 입력 내용을 살려준다.
+      setMessages((current) => current.filter((message) => message.id !== pendingId));
+      setDraft(query);
+      setAttachments(imageUrls);
+      setError('답변을 받지 못했어요. 다시 시도해 주세요.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleNewConversation = async () => {
+    setError('');
+    try {
+      const conversation = await createConversation();
+      setConversationId(conversation.id);
+      setMessages([]);
+      setAttachments([]);
+      setFingerprints([]);
+      setDraft('');
+    } catch {
+      setError('새 대화를 시작하지 못했어요.');
+    }
+  };
+
+  const renderMessage = ({ item }: { item: ChatMessage }) => {
+    const recommendations = item.role === 'assistant' ? item.payload.recommendations ?? [] : [];
+    const tips = item.role === 'assistant' ? item.payload.style_guide?.tips ?? [] : [];
+
+    return (
+      <ChatBubble role={item.role} content={item.content} imageUrls={item.payload.image_urls ?? []}>
+        {item.role === 'assistant' ? (
+          <ChatRecommendationList items={recommendations} tips={tips} />
+        ) : null}
+      </ChatBubble>
+    );
   };
 
   return (
-    <ScreenContainer>
+    // 입력 바의 구분선이 화면 끝까지 닿도록 좌우 여백은 각 영역에서 준다.
+    <ScreenContainer scroll={false} padded={false}>
       <View style={styles.header}>
-        <Text style={styles.title}>스타일 추천받기</Text>
+        <Text style={styles.title}>스타일 추천</Text>
+        <Pressable
+          accessibilityLabel="새 대화 시작"
+          disabled={isSending || messages.length === 0}
+          onPress={handleNewConversation}
+          style={({ pressed }) => [
+            styles.newChat,
+            pressed && styles.newChatPressed,
+            (isSending || messages.length === 0) && styles.disabled,
+          ]}
+        >
+          <Ionicons name="create-outline" size={18} color={colors.primary} />
+        </Pressable>
       </View>
 
-      <NoticeBanner
-        icon="shirt-outline"
-        title="사진 한 장에 옷은 한 벌만 나오게 찍어주세요"
-        description={`여러 벌이 함께 담기면 옷을 정확히 알아보지 못해요. 여러 벌을 올리고 싶다면 한 벌씩 나눠 찍어 최대 ${MAX_IMAGES}장까지 추가할 수 있어요.`}
-      />
-
-      <View style={styles.uploadSection}>
-        {hasImages || isUploading ? (
-          <SelectedImageGrid
-            imageUrls={imageUrls}
-            pendingCount={uploadingCount}
-            disabled={isBusy}
-            onAdd={handlePickImages}
-            onRemove={handleRemoveImage}
-          />
-        ) : (
-          <ImageUploadBox
-            title="옷 사진 추가"
-            description="한 벌씩 찍은 사진을 여러 장 올릴 수 있어요"
-            disabled={isBusy}
-            onPress={handlePickImages}
-          />
-        )}
-        {hasImages ? (
-          <Text style={styles.countText}>
-            {imageUrls.length}장 선택됨{isUploading ? ` · ${uploadingCount}장 업로드 중` : ''}
-          </Text>
-        ) : null}
-      </View>
-
-      <View style={styles.promptCard}>
-        <AppTextInput
-          placeholder="원하는 분위기를 입력하세요"
-          value={prompt}
-          onChangeText={setPrompt}
-          multiline
-          style={styles.promptInput}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <FlatList
+          ref={listRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          renderItem={renderMessage}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={scrollToEnd}
+          ListHeaderComponent={
+            messages.length === 0 && !isBootstrapping ? (
+              <View style={styles.intro}>
+                <ChatBubble role="assistant" content={GREETING} />
+                <NoticeBanner
+                  icon="shirt-outline"
+                  title="사진 한 장에 옷은 한 벌만 나오게 찍어주세요"
+                  description={`여러 벌이 함께 담기면 옷을 정확히 알아보지 못해요. 한 벌씩 나눠 찍어 최대 ${MAX_ATTACHMENTS}장까지 첨부할 수 있어요.`}
+                />
+              </View>
+            ) : null
+          }
+          ListFooterComponent={isSending ? <TypingIndicator /> : null}
         />
-      </View>
 
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      <AppButton
-        title={isUploading ? '업로드 중' : isSubmitting ? '추천 만드는 중' : '스타일 추천 받기'}
-        disabled={isBusy}
-        onPress={handleRecommend}
-      />
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+        <ChatComposer
+          value={draft}
+          attachments={attachments}
+          pendingAttachmentCount={uploadingCount}
+          canSend={canSend}
+          isSending={isSending}
+          isUploading={isUploading}
+          onChangeText={setDraft}
+          onAttach={handleAttach}
+          onRemoveAttachment={handleRemoveAttachment}
+          onSend={handleSend}
+        />
+      </KeyboardAvoidingView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+    minHeight: 0,
+  },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl,
     paddingTop: spacing.xxl,
-    paddingBottom: spacing.xl,
-    gap: 0,
+    paddingBottom: spacing.lg,
   },
   title: {
     color: colors.text,
-    fontSize: typography.title,
-    lineHeight: 44,
+    fontSize: typography.heading,
+    lineHeight: 38,
     letterSpacing: letterSpacing.heading,
     fontFamily: fontFamily.heavy,
     fontWeight: fontWeight.heavy,
   },
-  uploadSection: {
-    marginTop: spacing.lg,
+  newChat: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  newChatPressed: {
+    opacity: 0.82,
+  },
+  disabled: {
+    opacity: 0.45,
+  },
+  list: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.md,
+  },
+  intro: {
     gap: spacing.sm,
-  },
-  countText: {
-    color: colors.subText,
-    fontSize: 13,
-    lineHeight: 19,
-    fontFamily: fontFamily.medium,
-    fontWeight: fontWeight.medium,
-  },
-  promptCard: {
-    marginVertical: spacing.lg,
-    gap: spacing.md,
-  },
-  promptInput: {
-    minHeight: 124,
-    textAlignVertical: 'top',
-    paddingTop: spacing.lg,
+    marginBottom: spacing.lg,
   },
   errorText: {
     color: colors.danger,
     fontSize: 13,
     lineHeight: 19,
     textAlign: 'center',
-    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.sm,
     fontFamily: fontFamily.medium,
     fontWeight: fontWeight.medium,
   },

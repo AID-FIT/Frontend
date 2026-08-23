@@ -2,7 +2,7 @@ import type { Recommendation } from '../types/fashion';
 import { apiClient } from './apiClient';
 import { normalizeAssetUrl } from '../utils/url';
 
-type AgentRecommendationItem = {
+export type AgentRecommendationItem = {
   item_id: string | null;
   source: 'closet' | 'musinsa';
   item_name: string | null;
@@ -14,7 +14,7 @@ type AgentRecommendationItem = {
   reason: string;
 };
 
-type AgentRecommendationResponse = {
+export type AgentRecommendationResponse = {
   status: 'success' | 'empty' | 'error';
   message: string;
   recommendations: AgentRecommendationItem[];

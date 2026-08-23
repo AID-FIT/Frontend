@@ -24,10 +24,14 @@ const refreshCooldownMs = 5 * 60 * 1000;
 // 사용자가 직접 새로고침하기 전까지는 최근 결과를 다시 보여준다.
 const homeCacheKey = 'aidfit_home_recommendation';
 const homeCacheTtlMs = 30 * 60 * 1000;
+// 백엔드가 채워 보내는 타일 수(_HOME_TILE_COUNT)와 맞춘다. 스켈레톤이 더 적으면
+// 로딩이 끝나는 순간 목록이 늘어나며 화면이 튄다.
+const homeTileCount = 8;
 
 export function HomeScreen() {
   const [query, setQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState(categories[0]);
+  // 칩은 아무것도 고르지 않은 상태로 시작한다. 첫 진입은 옷장·취향만으로 추천한다.
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshingRecommendations, setIsRefreshingRecommendations] = useState(false);
@@ -87,7 +91,11 @@ export function HomeScreen() {
         const nextProducts = recommendationToProducts(recommendation, refreshSeed);
         setProducts(nextProducts);
         refreshSeedRef.current = refreshSeed;
-        void writeCache(homeCacheKey, nextProducts);
+        // 캐시는 "그냥 홈에 들어왔을 때" 보여줄 기본 추천만 담는다. 검색 결과를
+        // 같은 키에 쓰면 다음 진입에서 검색어 없이도 그 결과가 되살아난다.
+        if (!nextQuery.trim()) {
+          void writeCache(homeCacheKey, nextProducts);
+        }
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
       })
       .catch(() => {
@@ -103,9 +111,13 @@ export function HomeScreen() {
       });
   }, [recommendationToProducts, setBottomPullArmed]);
 
+  // 칩(무드)과 입력창(자유 요청)은 둘 다 "추가로 원하는 점"이라 함께 보낸다.
+  // 한쪽이 다른 쪽을 덮어쓰면 방금 입력한 요청이 조용히 사라진다.
+  const searchTerm = [selectedCategory, query.trim()].filter(Boolean).join(' ');
+
   const refreshRecommendationSet = useCallback(() => {
-    loadProducts(query, refreshSeedRef.current + 1, false);
-  }, [loadProducts, query]);
+    loadProducts(searchTerm, refreshSeedRef.current + 1, false);
+  }, [loadProducts, searchTerm]);
 
   const getCooldownRemainingSeconds = useCallback(() => (
     Math.max(0, Math.ceil((cooldownUntilRef.current - Date.now()) / 1000))
@@ -159,10 +171,12 @@ export function HomeScreen() {
   }, [requestRefreshRecommendationSet]);
 
   const handleCategoryPress = useCallback((category: string) => {
-    setSelectedCategory(category);
-    setQuery(category);
-    loadProducts(category, 0, true);
-  }, [loadProducts]);
+    // 같은 칩을 다시 누르면 해제한다. 해제할 방법이 없으면 한 번 누른 뒤로는
+    // 취향 기반 기본 추천으로 돌아갈 수 없다.
+    const nextCategory = selectedCategory === category ? '' : category;
+    setSelectedCategory(nextCategory);
+    loadProducts([nextCategory, query.trim()].filter(Boolean).join(' '), 0, true);
+  }, [loadProducts, query, selectedCategory]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -280,7 +294,7 @@ export function HomeScreen() {
           placeholder="오늘 코디에 추가로 원하는 점을 입력하세요"
           value={query}
           onChangeText={setQuery}
-          onSubmitEditing={() => loadProducts(query, 0, true)}
+          onSubmitEditing={() => loadProducts(searchTerm, 0, true)}
           style={styles.searchInput}
         />
       </View>
@@ -329,7 +343,7 @@ export function HomeScreen() {
           style={styles.feedList}
           ListEmptyComponent={
             isInitialLoading ? (
-              <ProductGridSkeleton />
+              <ProductGridSkeleton count={homeTileCount} />
             ) : (
               <Text style={styles.stateText}>{error || '표시할 추천이 없어요.'}</Text>
             )

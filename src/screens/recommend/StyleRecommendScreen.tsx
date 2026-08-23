@@ -220,6 +220,20 @@ export function StyleRecommendScreen() {
     }
   };
 
+  const handleNewConversation = async () => {
+    setError('');
+    try {
+      const conversation = await createConversation();
+      setConversationId(conversation.id);
+      setMessages([]);
+      setAttachments([]);
+      setFingerprints([]);
+      setDraft('');
+    } catch {
+      setError('새 대화를 시작하지 못했어요.');
+    }
+  };
+
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const recommendations = item.role === 'assistant' ? item.payload.recommendations ?? [] : [];
     const tips = item.role === 'assistant' ? item.payload.style_guide?.tips ?? [] : [];
@@ -276,8 +290,10 @@ export function StyleRecommendScreen() {
           canSend={canSend}
           isSending={isSending}
           isUploading={isUploading}
+          canStartNewConversation={messages.length > 0 && !isSending}
           onChangeText={setDraft}
           onAttach={handleAttach}
+          onNewConversation={handleNewConversation}
           onRemoveAttachment={handleRemoveAttachment}
           onSend={handleSend}
         />

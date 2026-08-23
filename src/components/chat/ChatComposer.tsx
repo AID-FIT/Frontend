@@ -14,8 +14,11 @@ type ChatComposerProps = {
   canSend: boolean;
   isSending: boolean;
   isUploading: boolean;
+  // 이미 빈 대화에서 또 시작하면 빈 대화만 쌓이므로 호출부에서 막는다.
+  canStartNewConversation: boolean;
   onChangeText: (value: string) => void;
   onAttach: () => void;
+  onNewConversation: () => void;
   onRemoveAttachment: (imageUrl: string) => void;
   onSend: () => void;
 };
@@ -27,8 +30,10 @@ export function ChatComposer({
   canSend,
   isSending,
   isUploading,
+  canStartNewConversation,
   onChangeText,
   onAttach,
+  onNewConversation,
   onRemoveAttachment,
   onSend,
 }: ChatComposerProps) {
@@ -38,6 +43,11 @@ export function ChatComposer({
   const handlePickFromMenu = () => {
     setIsMenuOpen(false);
     onAttach();
+  };
+
+  const handleNewConversationFromMenu = () => {
+    setIsMenuOpen(false);
+    onNewConversation();
   };
 
   return (
@@ -83,6 +93,23 @@ export function ChatComposer({
               <Ionicons name="images-outline" size={18} color={colors.primary} />
               <Text style={styles.popoverLabel}>사진 선택하기</Text>
             </Pressable>
+
+            <View style={styles.popoverDivider} />
+
+            <Pressable
+              accessibilityLabel="새 대화 시작"
+              disabled={!canStartNewConversation}
+              onPress={handleNewConversationFromMenu}
+              style={({ pressed }) => [
+                styles.popoverItem,
+                pressed && canStartNewConversation && styles.popoverItemPressed,
+                !canStartNewConversation && styles.disabled,
+              ]}
+            >
+              <Ionicons name="create-outline" size={18} color={colors.primary} />
+              <Text style={styles.popoverLabel}>새 대화 시작</Text>
+            </Pressable>
+
             {/* + 버튼을 가리키는 꼬리 */}
             <View style={styles.popoverTail} />
           </View>
@@ -178,6 +205,11 @@ const styles = StyleSheet.create({
   },
   popoverItemPressed: {
     opacity: 0.7,
+  },
+  popoverDivider: {
+    height: 1,
+    marginHorizontal: spacing.sm,
+    backgroundColor: colors.border,
   },
   popoverLabel: {
     color: colors.text,

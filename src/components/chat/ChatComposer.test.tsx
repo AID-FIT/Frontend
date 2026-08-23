@@ -37,8 +37,10 @@ function baseProps() {
     canSend: false,
     isSending: false,
     isUploading: false,
+    canStartNewConversation: true,
     onChangeText: jest.fn(),
     onAttach: jest.fn(),
+    onNewConversation: jest.fn(),
     onRemoveAttachment: jest.fn(),
     onSend: jest.fn(),
   };
@@ -86,5 +88,25 @@ describe('ChatComposer attach menu', () => {
     press(findByLabel(tree, '첨부 메뉴 닫기'));
 
     expect(hasText(tree, '사진 선택하기')).toBe(false);
+  });
+
+  it('starts a new conversation and closes the menu', () => {
+    const props = baseProps();
+    const tree = render(<ChatComposer {...props} />);
+    press(findByLabel(tree, '사진 첨부'));
+
+    press(findByLabel(tree, '새 대화 시작'));
+
+    expect(props.onNewConversation).toHaveBeenCalledTimes(1);
+    expect(hasText(tree, '새 대화 시작')).toBe(false);
+  });
+
+  it('disables starting a new conversation when the current one is already empty', () => {
+    // 빈 대화에서 또 시작하면 쓰이지 않는 대화만 쌓인다.
+    const props = { ...baseProps(), canStartNewConversation: false };
+    const tree = render(<ChatComposer {...props} />);
+    press(findByLabel(tree, '사진 첨부'));
+
+    expect(findByLabel(tree, '새 대화 시작').props.disabled).toBe(true);
   });
 });

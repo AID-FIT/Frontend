@@ -60,6 +60,21 @@ export async function analyzeImage(imageId: string): Promise<UploadedImage> {
   };
 }
 
+export type PendingAnalysisResult = {
+  analyzed: number;
+  failed: number;
+  has_more: boolean;
+};
+
+/**
+ * 분석이 남아 있는 사진을 서버가 한 배치만큼 처리한다.
+ * 업로드 직후의 분석 요청이 도달하지 못한 경우(네트워크 끊김, 앱 종료)를 회수한다.
+ */
+export async function analyzePendingImages(): Promise<PendingAnalysisResult> {
+  const response = await apiClient.post<PendingAnalysisResult>('/images/analyze-pending');
+  return response.data;
+}
+
 /** 분석 요청을 띄우되 실패해도 화면 흐름을 막지 않는다. */
 export function requestAnalysisInBackground(image: UploadedImage): void {
   if (image.analyzed) {

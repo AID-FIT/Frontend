@@ -11,6 +11,7 @@ import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
 import {
+  analyzePendingImages,
   deleteImage,
   listImages,
   pickImageFile,
@@ -18,6 +19,9 @@ import {
   uploadImage,
   type UploadedImage,
 } from '../../services/imageService';
+
+// 옷장 진입 시 회수 시도 횟수. 무한히 돌지 않도록 묶어둔다.
+const MAX_PENDING_ROUNDS = 3;
 
 export function ClosetScreen() {
   const [images, setImages] = useState<UploadedImage[]>([]);
@@ -46,6 +50,30 @@ export function ClosetScreen() {
   useEffect(() => {
     loadImages();
   }, [loadImages]);
+
+  // 업로드 직후의 분석 요청이 도달하지 못한 사진을 옷장에 들어올 때 회수한다.
+  // 화면 표시에는 영향이 없으므로 결과를 기다리지도, 오류를 노출하지도 않는다.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      // 한 번에 다 처리하지 않으므로 남아 있으면 몇 차례 이어서 부른다.
+      for (let round = 0; round < MAX_PENDING_ROUNDS; round += 1) {
+        try {
+          const result = await analyzePendingImages();
+          if (cancelled || !result.has_more) {
+            return;
+          }
+        } catch {
+          return;
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleUpload = async () => {
     setError('');

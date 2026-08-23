@@ -29,7 +29,12 @@ import {
   type ChatMessage,
   type Conversation,
 } from '../../services/chatService';
-import { getImageFingerprint, pickImageFiles, uploadImage } from '../../services/imageService';
+import {
+  getImageFingerprint,
+  pickImageFiles,
+  requestAnalysisInBackground,
+  uploadImage,
+} from '../../services/imageService';
 
 const MAX_ATTACHMENTS = 8;
 const GREETING =
@@ -163,6 +168,8 @@ export function StyleRecommendScreen() {
       }
       uploaded.push(url);
       uploadedFingerprints.push(accepted[index].fingerprint);
+      // 분석은 업로드와 분리돼 있다. 결과를 기다리지 않고 이어서 태운다.
+      requestAnalysisInBackground(result.value);
     });
 
     const failedCount = results.filter((result) => result.status === 'rejected').length;

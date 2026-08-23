@@ -12,7 +12,13 @@ import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing } from '../../constants/typography';
 import { useToggleList } from '../../hooks/useToggleList';
-import { pickImageFile, uploadImage, type UploadedImage } from '../../services/imageService';
+import {
+  getImageFingerprint,
+  pickImageFile,
+  requestAnalysisInBackground,
+  uploadImage,
+  type UploadedImage,
+} from '../../services/imageService';
 import { completeOnboarding as completeOnboardingRequest } from '../../services/userService';
 import { useAppStore } from '../../store/useAppStore';
 
@@ -24,6 +30,8 @@ export function OnboardingScreen() {
   const [age, setAge] = useState('20대');
   // id만 들고 있으면 썸네일을 그릴 수 없어 업로드 결과를 통째로 보관한다.
   const [closetImages, setClosetImages] = useState<UploadedImage[]>([]);
+  // closetImages와 같은 순서로 유지되는 내용 지문 목록.
+  const [fingerprints, setFingerprints] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -43,15 +51,26 @@ export function OnboardingScreen() {
       return;
     }
 
+    // 업로드 전에 내용 지문으로 같은 사진인지 먼저 본다.
+    const fingerprint = await getImageFingerprint(file);
+    if (fingerprints.includes(fingerprint)) {
+      setError('이미 같은 이미지가 업로드 되어 있습니다!');
+      return;
+    }
+
     setIsUploading(true);
     try {
       const uploaded = await uploadImage(file);
-      // 백엔드가 내용 해시로 중복을 걸러 같은 사진은 같은 id로 돌아온다.
-      setClosetImages((current) =>
-        current.some((image) => image.id === uploaded.id)
-          ? current
-          : [...current, uploaded],
-      );
+      // 백엔드도 내용 해시로 경로를 정하므로 지문이 달라도 같은 id가 올 수 있다.
+      if (closetImages.some((image) => image.id === uploaded.id)) {
+        setError('이미 같은 이미지가 업로드 되어 있습니다!');
+        return;
+      }
+
+      setClosetImages((current) => [...current, uploaded]);
+      setFingerprints((current) => [...current, fingerprint]);
+      // 분석은 업로드와 분리돼 있다. 결과를 기다리지 않고 이어서 태운다.
+      requestAnalysisInBackground(uploaded);
     } catch {
       setError('옷장 사진 업로드에 실패했어요.');
     } finally {
@@ -61,7 +80,12 @@ export function OnboardingScreen() {
 
   const handleRemove = (imageId: string) => {
     setError('');
+    const index = closetImages.findIndex((image) => image.id === imageId);
+    if (index === -1) {
+      return;
+    }
     setClosetImages((current) => current.filter((image) => image.id !== imageId));
+    setFingerprints((current) => current.filter((_, i) => i !== index));
   };
 
   const handleComplete = async () => {

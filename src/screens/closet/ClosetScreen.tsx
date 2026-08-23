@@ -14,6 +14,7 @@ import {
   deleteImage,
   listImages,
   pickImageFile,
+  requestAnalysisInBackground,
   uploadImage,
   type UploadedImage,
 } from '../../services/imageService';
@@ -57,6 +58,8 @@ export function ClosetScreen() {
     uploadImage(file)
       .then((uploaded) => {
         setImages((current) => [uploaded, ...current]);
+        // 분석은 업로드와 분리돼 있다. 결과를 기다리지 않고 이어서 태운다.
+        requestAnalysisInBackground(uploaded);
       })
       .catch(() => {
         setError('사진 업로드에 실패했어요.');

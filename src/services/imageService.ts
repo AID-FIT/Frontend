@@ -19,6 +19,8 @@ export type UploadedImage = {
   id: string;
   image_url: string;
   content_type: string;
+  /** 옷 메타데이터 분석 완료 여부. false면 analyzeImage를 이어서 부른다. */
+  analyzed?: boolean;
 };
 
 export async function listImages(): Promise<UploadedImage[]> {
@@ -43,6 +45,29 @@ export async function uploadImage(file: File): Promise<UploadedImage> {
     ...response.data,
     image_url: normalizeAssetUrl(response.data.image_url) ?? response.data.image_url,
   };
+}
+
+/**
+ * 옷 메타데이터 분석을 요청한다. 업로드와 분리돼 있어 사용자를 기다리게 하지 않는다.
+ * 서버리스는 응답 후 함수가 멈춰 서버측 백그라운드 작업을 신뢰할 수 없으므로,
+ * 클라이언트가 별도 요청으로 이어서 태운다.
+ */
+export async function analyzeImage(imageId: string): Promise<UploadedImage> {
+  const response = await apiClient.post<UploadedImage>(`/images/${imageId}/analyze`);
+  return {
+    ...response.data,
+    image_url: normalizeAssetUrl(response.data.image_url) ?? response.data.image_url,
+  };
+}
+
+/** 분석 요청을 띄우되 실패해도 화면 흐름을 막지 않는다. */
+export function requestAnalysisInBackground(image: UploadedImage): void {
+  if (image.analyzed) {
+    return;
+  }
+  void analyzeImage(image.id).catch(() => {
+    // 분석 실패는 추천 품질에만 영향을 준다. 업로드 자체는 이미 끝났다.
+  });
 }
 
 export async function deleteImage(imageId: string): Promise<void> {

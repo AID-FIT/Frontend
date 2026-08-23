@@ -11,7 +11,7 @@ import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { colors } from '../../constants/colors';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
-import { pickImageFiles, uploadImage } from '../../services/imageService';
+import { getImageFingerprint, pickImageFiles, uploadImage } from '../../services/imageService';
 import { createRecommendation } from '../../services/recommendationService';
 import { useAppStore } from '../../store/useAppStore';
 import type { RecommendStackParamList } from '../../types/navigation';
@@ -27,6 +27,8 @@ export function StyleRecommendScreen() {
   const preferredStyles = useAppStore((state) => state.preferredStyles);
   const [prompt, setPrompt] = useState('');
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  // imageUrls와 같은 순서로 유지되는 내용 지문 목록.
+  const [selectedFingerprints, setSelectedFingerprints] = useState<string[]>([]);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -48,22 +50,60 @@ export function StyleRecommendScreen() {
       return;
     }
 
-    const accepted = files.slice(0, remainingSlots);
-    if (accepted.length < files.length) {
+    // 업로드 전에 내용 지문으로 중복을 걸러낸다.
+    // 이미 고른 사진, 그리고 이번에 한꺼번에 고른 것들 사이의 중복까지 본다.
+    const fingerprints = await Promise.all(files.map((file) => getImageFingerprint(file)));
+    const seen = new Set(selectedFingerprints);
+    const unique: { file: File; fingerprint: string }[] = [];
+    let duplicateCount = 0;
+
+    files.forEach((file, index) => {
+      const fingerprint = fingerprints[index];
+      if (seen.has(fingerprint)) {
+        duplicateCount += 1;
+        return;
+      }
+      seen.add(fingerprint);
+      unique.push({ file, fingerprint });
+    });
+
+    if (unique.length === 0) {
+      setError('이미 같은 이미지가 업로드 되어 있습니다!');
+      return;
+    }
+
+    const accepted = unique.slice(0, remainingSlots);
+
+    if (duplicateCount > 0) {
+      setError(`이미 같은 이미지가 업로드 되어 있습니다! (${duplicateCount}장 제외)`);
+    } else if (accepted.length < unique.length) {
       setError(`사진은 최대 ${MAX_IMAGES}장까지라 ${accepted.length}장만 추가했어요.`);
     }
 
     setUploadingCount((count) => count + accepted.length);
 
     // 한 장이 실패해도 나머지는 살리려고 allSettled로 각각 처리한다.
-    const results = await Promise.allSettled(accepted.map((file) => uploadImage(file)));
-    const uploaded = results
-      .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof uploadImage>>> =>
-        result.status === 'fulfilled')
-      .map((result) => result.value.image_url);
-    const failedCount = results.length - uploaded.length;
+    const results = await Promise.allSettled(accepted.map(({ file }) => uploadImage(file)));
+    const uploaded: string[] = [];
+    const uploadedFingerprints: string[] = [];
+
+    results.forEach((result, index) => {
+      if (result.status !== 'fulfilled') {
+        return;
+      }
+      // 백엔드도 내용 해시로 경로를 정하므로, 지문이 달라도 같은 URL이 올 수 있다.
+      const { image_url: url } = result.value;
+      if (uploaded.includes(url) || imageUrls.includes(url)) {
+        return;
+      }
+      uploaded.push(url);
+      uploadedFingerprints.push(accepted[index].fingerprint);
+    });
+
+    const failedCount = results.filter((result) => result.status === 'rejected').length;
 
     setImageUrls((current) => [...current, ...uploaded]);
+    setSelectedFingerprints((current) => [...current, ...uploadedFingerprints]);
     setUploadingCount((count) => Math.max(0, count - accepted.length));
 
     if (failedCount > 0) {
@@ -77,7 +117,12 @@ export function StyleRecommendScreen() {
 
   const handleRemoveImage = (target: string) => {
     setError('');
+    const index = imageUrls.indexOf(target);
+    if (index === -1) {
+      return;
+    }
     setImageUrls((current) => current.filter((imageUrl) => imageUrl !== target));
+    setSelectedFingerprints((current) => current.filter((_, i) => i !== index));
   };
 
   const handleRecommend = () => {

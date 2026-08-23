@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppCard } from '../../components/common/AppCard';
+import { NoticeBanner } from '../../components/common/NoticeBanner';
 import { ClosetGridSkeleton } from '../../components/fashion/ClosetGridSkeleton';
 import { ImageUploadBox } from '../../components/fashion/ImageUploadBox';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
@@ -84,6 +85,14 @@ export function ClosetScreen() {
     <ScreenContainer>
       <View style={styles.header}>
         <Text style={styles.title}>내 옷장</Text>
+      </View>
+
+      <View style={styles.notice}>
+        <NoticeBanner
+          icon="shirt-outline"
+          title="사진 한 장에 옷은 한 벌만 나오게 찍어주세요"
+          description="여러 벌이 함께 담기면 옷을 정확히 알아보지 못해요. 한 벌씩 나눠 찍어 올려주세요."
+        />
       </View>
 
       {/* 목록이 있을 때는 빈 상태 카드가 없으므로 오류를 여기서 보여준다. */}
@@ -169,6 +178,9 @@ const styles = StyleSheet.create({
     letterSpacing: letterSpacing.heading,
     fontFamily: fontFamily.heavy,
     fontWeight: fontWeight.heavy,
+  },
+  notice: {
+    marginBottom: spacing.lg,
   },
   grid: {
     flexDirection: 'row',

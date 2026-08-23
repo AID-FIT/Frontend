@@ -9,18 +9,23 @@ type ScreenContainerProps = {
   children: ReactNode;
   scroll?: boolean;
   padded?: boolean;
+  /** 사이드바가 있는 화면처럼 더 넓은 폭이 필요할 때만 지정한다. */
+  maxWidth?: number;
 };
 
 export function ScreenContainer({
   children,
   scroll = true,
   padded = true,
+  maxWidth = layout.maxContentWidth,
 }: ScreenContainerProps) {
   if (!scroll) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={[styles.content, styles.fixedContent]}>
-          <View style={[styles.column, styles.fixedColumn, padded && styles.padded]}>{children}</View>
+          <View style={[styles.column, { maxWidth }, styles.fixedColumn, padded && styles.padded]}>
+            {children}
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -29,7 +34,9 @@ export function ScreenContainer({
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.column, styles.scrollColumn, padded && styles.padded]}>{children}</View>
+        <View style={[styles.column, { maxWidth }, styles.scrollColumn, padded && styles.padded]}>
+          {children}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -50,7 +57,6 @@ const styles = StyleSheet.create({
   // 넓은 화면에서도 내용을 가운데 고정 폭 안에 담는다.
   column: {
     width: '100%',
-    maxWidth: layout.maxContentWidth,
     alignSelf: 'center',
   },
   fixedColumn: {

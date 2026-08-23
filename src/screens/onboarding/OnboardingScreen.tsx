@@ -1,25 +1,30 @@
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '../../components/common/AppButton';
 import { AppCard } from '../../components/common/AppCard';
 import { Chip } from '../../components/common/Chip';
+import { NoticeBanner } from '../../components/common/NoticeBanner';
 import { ImageUploadBox } from '../../components/fashion/ImageUploadBox';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { colors } from '../../constants/colors';
+import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing } from '../../constants/typography';
 import { useToggleList } from '../../hooks/useToggleList';
-import { pickImageFile, uploadImage } from '../../services/imageService';
+import { pickImageFile, uploadImage, type UploadedImage } from '../../services/imageService';
 import { completeOnboarding as completeOnboardingRequest } from '../../services/userService';
 import { useAppStore } from '../../store/useAppStore';
 
 const ageOptions = ['10대', '20대', '30대', '40대 이상'];
 const styleOptions = ['캐주얼', '미니멀', '스트릿', '포멀', '스포티'];
+const MAX_CLOSET_IMAGES = 4;
 
 export function OnboardingScreen() {
   const [age, setAge] = useState('20대');
-  const [closetImageIds, setClosetImageIds] = useState<string[]>([]);
+  // id만 들고 있으면 썸네일을 그릴 수 없어 업로드 결과를 통째로 보관한다.
+  const [closetImages, setClosetImages] = useState<UploadedImage[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const { values: styles, toggle } = useToggleList(['캐주얼', '미니멀']);
@@ -28,22 +33,35 @@ export function OnboardingScreen() {
 
   const handleUpload = async () => {
     setError('');
+    if (closetImages.length >= MAX_CLOSET_IMAGES) {
+      setError(`사진은 최대 ${MAX_CLOSET_IMAGES}장까지 올릴 수 있어요.`);
+      return;
+    }
+
     const file = await pickImageFile();
     if (!file) {
       return;
     }
 
-    setIsSaving(true);
-    uploadImage(file)
-      .then((uploaded) => {
-        setClosetImageIds((ids) => [...ids, uploaded.id]);
-      })
-      .catch(() => {
-        setError('옷장 사진 업로드에 실패했어요.');
-      })
-      .finally(() => {
-        setIsSaving(false);
-      });
+    setIsUploading(true);
+    try {
+      const uploaded = await uploadImage(file);
+      // 백엔드가 내용 해시로 중복을 걸러 같은 사진은 같은 id로 돌아온다.
+      setClosetImages((current) =>
+        current.some((image) => image.id === uploaded.id)
+          ? current
+          : [...current, uploaded],
+      );
+    } catch {
+      setError('옷장 사진 업로드에 실패했어요.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleRemove = (imageId: string) => {
+    setError('');
+    setClosetImages((current) => current.filter((image) => image.id !== imageId));
   };
 
   const handleComplete = async () => {
@@ -52,7 +70,7 @@ export function OnboardingScreen() {
     completeOnboardingRequest({
       age_range: age,
       styles,
-      closet_image_ids: closetImageIds,
+      closet_image_ids: closetImages.map((image) => image.id),
     })
       .then((profile) => {
         completeOnboarding(age, styles, user ? { ...user, role: profile.role } : null);
@@ -100,16 +118,38 @@ export function OnboardingScreen() {
           <Ionicons name="images-outline" size={24} color={colors.primary} />
           <Text style={screenStyles.sectionTitle}>옷장에 어떤 옷이 있나요?</Text>
         </View>
+
+        <NoticeBanner
+          icon="shirt-outline"
+          title="사진 한 장에 옷은 한 벌만 나오게 찍어주세요"
+          description={`여러 벌이 함께 담기면 옷을 정확히 알아보지 못해요. 한 벌씩 나눠 찍어 최대 ${MAX_CLOSET_IMAGES}장까지 올릴 수 있어요.`}
+        />
+
         <View style={screenStyles.uploadGrid}>
-          {[0, 1, 2, 3].map((item) => (
-            <ImageUploadBox
-              key={item}
-              compact
-              title={item < closetImageIds.length ? '추가됨' : '사진 추가'}
-              disabled={isSaving}
-              onPress={handleUpload}
-            />
+          {closetImages.map((image) => (
+            <View key={image.id} style={screenStyles.slot}>
+              <Image source={{ uri: image.image_url }} style={screenStyles.thumb} resizeMode="cover" />
+              <Pressable
+                accessibilityLabel="사진 삭제"
+                disabled={isSaving}
+                onPress={() => handleRemove(image.id)}
+                style={({ pressed }) => [screenStyles.remove, pressed && screenStyles.pressed]}
+              >
+                <Ionicons name="close" size={12} color={colors.white} />
+              </Pressable>
+            </View>
           ))}
+
+          {closetImages.length < MAX_CLOSET_IMAGES ? (
+            <View style={screenStyles.slot}>
+              <ImageUploadBox
+                compact
+                title={isUploading ? '업로드 중' : '사진 추가'}
+                disabled={isUploading || isSaving}
+                onPress={handleUpload}
+              />
+            </View>
+          ) : null}
         </View>
       </AppCard>
 
@@ -158,6 +198,31 @@ const screenStyles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.md,
+  },
+  // ImageUploadBox(compact)는 flex:1이라 고정 폭 슬롯 안에 담아 크기를 맞춘다.
+  slot: {
+    width: 96,
+    height: 102,
+  },
+  thumb: {
+    width: '100%',
+    height: '100%',
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceSoft,
+  },
+  remove: {
+    position: 'absolute',
+    top: spacing.xs,
+    right: spacing.xs,
+    width: 20,
+    height: 20,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.72,
   },
   errorText: {
     color: colors.danger,

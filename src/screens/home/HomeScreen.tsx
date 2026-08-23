@@ -11,6 +11,7 @@ import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
 import { getHomeRecommendation } from '../../services/recommendationService';
+import { readCache, writeCache } from '../../utils/cache';
 import type { Product, Recommendation } from '../../types/fashion';
 
 const categories = ['캐주얼', '여름', '미니멀', '데이트룩'];
@@ -19,6 +20,10 @@ const edgeThreshold = 24;
 const bottomPullThreshold = 36;
 const refreshLimitPerSession = 5;
 const refreshCooldownMs = 5 * 60 * 1000;
+// 홈 추천은 진입할 때마다 Gemini를 호출해 응답이 10초 안팎 걸리고 비용도 든다.
+// 사용자가 직접 새로고침하기 전까지는 최근 결과를 다시 보여준다.
+const homeCacheKey = 'aidfit_home_recommendation';
+const homeCacheTtlMs = 30 * 60 * 1000;
 
 export function HomeScreen() {
   const [query, setQuery] = useState('');
@@ -81,6 +86,7 @@ export function HomeScreen() {
         const nextProducts = recommendationToProducts(recommendation, refreshSeed);
         setProducts(nextProducts);
         refreshSeedRef.current = refreshSeed;
+        void writeCache(homeCacheKey, nextProducts);
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
       })
       .catch(() => {
@@ -215,7 +221,26 @@ export function HomeScreen() {
   };
 
   useEffect(() => {
-    loadProducts('', 0, true);
+    let cancelled = false;
+
+    (async () => {
+      const cached = await readCache<Product[]>(homeCacheKey, homeCacheTtlMs);
+      if (cancelled) {
+        return;
+      }
+
+      if (cached && cached.length > 0) {
+        setProducts(cached);
+        setIsInitialLoading(false);
+        return;
+      }
+
+      loadProducts('', 0, true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [loadProducts]);
 
   useEffect(() => () => {

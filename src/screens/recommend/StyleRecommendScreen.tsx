@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
-import { NoticeBanner } from '../../components/common/NoticeBanner';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { ChatBubble } from '../../components/chat/ChatBubble';
 import { ChatComposer } from '../../components/chat/ChatComposer';
 import { ChatRecommendationList } from '../../components/chat/ChatRecommendationList';
+import { ConversationList } from '../../components/chat/ConversationList';
 import { TypingIndicator } from '../../components/chat/TypingIndicator';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { colors } from '../../constants/colors';
+import { layout } from '../../constants/layout';
+import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
 import {
@@ -15,6 +27,7 @@ import {
   listMessages,
   sendMessage,
   type ChatMessage,
+  type Conversation,
 } from '../../services/chatService';
 import { getImageFingerprint, pickImageFiles, uploadImage } from '../../services/imageService';
 
@@ -23,6 +36,10 @@ const GREETING =
   '안녕하세요! 옷 사진을 올리거나 원하는 스타일을 말씀해 주시면 어울리는 코디를 찾아드릴게요.';
 
 export function StyleRecommendScreen() {
+  const { width } = useWindowDimensions();
+  const showSidebarInline = width >= layout.sidebarBreakpoint;
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -31,6 +48,7 @@ export function StyleRecommendScreen() {
   const [fingerprints, setFingerprints] = useState<string[]>([]);
   const [uploadingCount, setUploadingCount] = useState(0);
   const [isSending, setIsSending] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [error, setError] = useState('');
   const listRef = useRef<FlatList<ChatMessage>>(null);
@@ -44,12 +62,16 @@ export function StyleRecommendScreen() {
 
     (async () => {
       try {
-        const conversations = await listConversations();
-        const conversation = conversations[0] ?? (await createConversation());
+        let list = await listConversations();
+        if (list.length === 0) {
+          list = [await createConversation()];
+        }
         if (cancelled) {
           return;
         }
 
+        const conversation = list[0];
+        setConversations(list);
         setConversationId(conversation.id);
         const history = await listMessages(conversation.id, { limit: 50 });
         if (!cancelled) {
@@ -209,6 +231,19 @@ export function StyleRecommendScreen() {
           created_at: new Date().toISOString(),
         },
       ]);
+
+      // 첫 질문이 대화 제목이 되므로 목록도 함께 맞춰준다.
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === conversationId
+            ? {
+                ...conversation,
+                title: conversation.title ?? query.slice(0, 40),
+                updated_at: new Date().toISOString(),
+              }
+            : conversation,
+        ),
+      );
     } catch {
       // 실패하면 방금 띄운 말풍선을 되돌리고 입력 내용을 살려준다.
       setMessages((current) => current.filter((message) => message.id !== pendingId));
@@ -220,17 +255,45 @@ export function StyleRecommendScreen() {
     }
   };
 
+  const resetComposer = () => {
+    setAttachments([]);
+    setFingerprints([]);
+    setDraft('');
+  };
+
   const handleNewConversation = async () => {
     setError('');
+    setIsSidebarOpen(false);
     try {
       const conversation = await createConversation();
+      setConversations((current) => [conversation, ...current]);
       setConversationId(conversation.id);
       setMessages([]);
-      setAttachments([]);
-      setFingerprints([]);
-      setDraft('');
+      resetComposer();
     } catch {
       setError('새 대화를 시작하지 못했어요.');
+    }
+  };
+
+  const handleSelectConversation = async (nextId: string) => {
+    setIsSidebarOpen(false);
+    if (nextId === conversationId || isSending) {
+      return;
+    }
+
+    setError('');
+    setConversationId(nextId);
+    setMessages([]);
+    resetComposer();
+    setIsLoadingHistory(true);
+
+    try {
+      const history = await listMessages(nextId, { limit: 50 });
+      setMessages(history.messages);
+    } catch {
+      setError('대화를 불러오지 못했어요.');
+    } finally {
+      setIsLoadingHistory(false);
     }
   };
 
@@ -249,11 +312,50 @@ export function StyleRecommendScreen() {
 
   return (
     // 입력 바의 구분선이 대화 폭 끝까지 닿도록 좌우 여백은 각 영역에서 준다.
-    <ScreenContainer scroll={false} padded={false}>
-      <>
+    <ScreenContainer
+      scroll={false}
+      padded={false}
+      maxWidth={showSidebarInline ? layout.maxContentWidthWide : layout.maxContentWidth}
+    >
+      <View style={styles.body}>
+        {/* 넓은 화면에서는 목록을 상시 노출하고, 좁으면 헤더 버튼으로 연다. */}
+        {showSidebarInline ? (
+          <View style={styles.sidebar}>
+            <ConversationList
+              conversations={conversations}
+              activeId={conversationId}
+              disabled={isSending}
+              onSelect={handleSelectConversation}
+              onNewConversation={handleNewConversation}
+            />
+          </View>
+        ) : null}
+
+        <View style={styles.main}>
         <View style={styles.header}>
+          {!showSidebarInline ? (
+            <Pressable
+              accessibilityLabel="대화 목록 열기"
+              onPress={() => setIsSidebarOpen((open) => !open)}
+              style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}
+            >
+              <Ionicons name="menu" size={20} color={colors.primary} />
+            </Pressable>
+          ) : null}
           <Text style={styles.title}>스타일 추천</Text>
         </View>
+
+        {!showSidebarInline && isSidebarOpen ? (
+          <View style={styles.sidebarOverlay}>
+            <ConversationList
+              conversations={conversations}
+              activeId={conversationId}
+              disabled={isSending}
+              onSelect={handleSelectConversation}
+              onNewConversation={handleNewConversation}
+            />
+          </View>
+        ) : null}
 
         <KeyboardAvoidingView
           style={styles.flex}
@@ -268,18 +370,13 @@ export function StyleRecommendScreen() {
             showsVerticalScrollIndicator={false}
             onContentSizeChange={scrollToEnd}
             ListHeaderComponent={
-              messages.length === 0 && !isBootstrapping ? (
+              messages.length === 0 && !isBootstrapping && !isLoadingHistory ? (
                 <View style={styles.intro}>
-                  <NoticeBanner
-                    icon="shirt-outline"
-                    title="사진 한 장에 옷은 한 벌만 나오게 찍어주세요"
-                    description={`여러 벌이 함께 담기면 옷을 정확히 알아보지 못해요. 한 벌씩 나눠 찍어 최대 ${MAX_ATTACHMENTS}장까지 첨부할 수 있어요.`}
-                  />
                   <ChatBubble role="assistant" content={GREETING} />
                 </View>
               ) : null
             }
-            ListFooterComponent={isSending ? <TypingIndicator /> : null}
+            ListFooterComponent={isSending || isLoadingHistory ? <TypingIndicator /> : null}
           />
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -299,20 +396,72 @@ export function StyleRecommendScreen() {
             onSend={handleSend}
           />
         </KeyboardAvoidingView>
-      </>
+        </View>
+      </View>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  body: {
+    flex: 1,
+    minHeight: 0,
+    flexDirection: 'row',
+  },
+  sidebar: {
+    width: layout.sidebarWidth,
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRightWidth: 1,
+    borderRightColor: colors.border,
+  },
+  // 좁은 화면에서는 대화 위에 얹어 띄운다.
+  sidebarOverlay: {
+    position: 'absolute',
+    top: 76,
+    left: spacing.lg,
+    right: spacing.lg,
+    maxHeight: 320,
+    zIndex: 10,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    padding: spacing.md,
+    shadowColor: colors.canvasDark,
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  main: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+  },
   flex: {
     flex: 1,
     minHeight: 0,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xxl,
     paddingBottom: spacing.lg,
+  },
+  menuButton: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.pill,
+    backgroundColor: colors.navySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: {
+    opacity: 0.72,
   },
   title: {
     color: colors.text,

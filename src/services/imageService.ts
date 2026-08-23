@@ -1,6 +1,20 @@
 import { apiClient } from './apiClient';
 import { normalizeAssetUrl } from '../utils/url';
 
+const ACCEPTED_IMAGE_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.heic',
+  '.heif',
+].join(',');
+
 export type UploadedImage = {
   id: string;
   image_url: string;
@@ -66,7 +80,9 @@ export function pickImageFiles(multiple = true): Promise<File[]> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*';
+    // image/* 는 OS의 MIME 등록에 기대다 보니 환경에 따라 webp/heic가 선택되지 않는다.
+    // Gemini Vision이 실제로 받는 형식을 확장자까지 함께 명시한다.
+    input.accept = ACCEPTED_IMAGE_TYPES;
     input.multiple = multiple;
     input.onchange = () => {
       resolve(Array.from(input.files ?? []));

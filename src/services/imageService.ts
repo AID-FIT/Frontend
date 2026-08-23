@@ -32,17 +32,30 @@ export async function uploadImage(file: File): Promise<UploadedImage> {
 }
 
 export function pickImageFile(): Promise<File | null> {
+  return pickImageFiles(false).then((files) => files[0] ?? null);
+}
+
+export function pickImageFiles(multiple = true): Promise<File[]> {
   if (typeof document === 'undefined') {
-    return Promise.resolve(null);
+    return Promise.resolve([]);
   }
 
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
+    input.multiple = multiple;
     input.onchange = () => {
-      resolve(input.files?.[0] ?? null);
+      resolve(Array.from(input.files ?? []));
     };
+    // 아무것도 고르지 않고 닫으면 change가 오지 않으므로 창 포커스 복귀로 취소를 감지한다.
+    window.addEventListener(
+      'focus',
+      () => {
+        setTimeout(() => resolve(Array.from(input.files ?? [])), 300);
+      },
+      { once: true },
+    );
     input.click();
   });
 }

@@ -160,10 +160,6 @@ export function LoginScreen() {
     });
   };
 
-  const handleAppleLogin = () => {
-    setAuthError('Apple 로그인은 Google 연동 확인 후 연결할 예정이에요.');
-  };
-
   const activeIconStyle = (index: number) => {
     const translateOutput =
       index === 0 ? [-9, 0, 0, -9] : index === 1 ? [0, -9, 0, 0] : [0, 0, -9, 0];
@@ -249,12 +245,6 @@ export function LoginScreen() {
             onPress={handleGoogleLogin}
             disabled={!googleRequest || isGoogleLoading}
             icon={<Text style={styles.googleIcon}>G</Text>}
-          />
-          <AppButton
-            title="Apple로 시작하기"
-            variant="dark"
-            onPress={handleAppleLogin}
-            icon={<Ionicons name="logo-apple" size={20} color={colors.white} />}
           />
           {authError ? <Text style={styles.errorText}>{authError}</Text> : null}
           <Text style={styles.terms}>로그인하면 약관에 동의한 것으로 간주됩니다.</Text>

@@ -5,6 +5,7 @@ import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View, ty
 import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { ProductCard } from '../../components/fashion/ProductCard';
+import { ProductGridSkeleton } from '../../components/fashion/ProductGridSkeleton';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
@@ -350,9 +351,11 @@ export function HomeScreen() {
           alwaysBounceVertical
           style={styles.feedList}
           ListEmptyComponent={
-            <Text style={styles.stateText}>
-              {isInitialLoading ? '추천 정보를 불러오는 중이에요.' : error || '표시할 추천이 없어요.'}
-            </Text>
+            isInitialLoading ? (
+              <ProductGridSkeleton />
+            ) : (
+              <Text style={styles.stateText}>{error || '표시할 추천이 없어요.'}</Text>
+            )
           }
           ListFooterComponent={
             products.length > 0 ? (

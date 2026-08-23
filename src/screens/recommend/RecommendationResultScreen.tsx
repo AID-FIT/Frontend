@@ -6,6 +6,8 @@ import { AppCard } from '../../components/common/AppCard';
 import { Chip } from '../../components/common/Chip';
 import { AIRecommendBadge } from '../../components/fashion/AIRecommendBadge';
 import { OutfitCard } from '../../components/fashion/OutfitCard';
+import { OutfitCardSkeleton } from '../../components/fashion/OutfitCardSkeleton';
+import { Skeleton } from '../../components/common/Skeleton';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { colors } from '../../constants/colors';
 import { spacing } from '../../constants/spacing';
@@ -35,13 +37,30 @@ export function RecommendationResultScreen() {
       });
   }, [recommendation, route.params.recommendationId]);
 
+  if (error) {
+    return (
+      <ScreenContainer>
+        <View style={styles.header}>
+          <AIRecommendBadge />
+          <Text style={styles.title}>{error}</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
   if (!recommendation) {
     return (
       <ScreenContainer>
         <View style={styles.header}>
           <AIRecommendBadge />
-          <Text style={styles.title}>{error || '추천 결과를 불러오는 중이에요'}</Text>
+          <Skeleton width="80%" height={34} />
+          <View style={styles.tags}>
+            <Skeleton width={72} height={30} borderRadius={999} />
+            <Skeleton width={56} height={30} borderRadius={999} />
+            <Skeleton width={64} height={30} borderRadius={999} />
+          </View>
         </View>
+        <OutfitCardSkeleton />
       </ScreenContainer>
     );
   }

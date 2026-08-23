@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { AppCard } from '../../components/common/AppCard';
+import { ClosetGridSkeleton } from '../../components/fashion/ClosetGridSkeleton';
 import { ImageUploadBox } from '../../components/fashion/ImageUploadBox';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { colors } from '../../constants/colors';
@@ -60,7 +61,9 @@ export function ClosetScreen() {
         <Text style={styles.title}>내 옷장</Text>
       </View>
 
-      {hasItems ? (
+      {isLoading ? (
+        <ClosetGridSkeleton />
+      ) : hasItems ? (
         <View style={styles.grid}>
           {images.map((item, index) => (
             <View key={item.id} style={styles.item}>
@@ -73,12 +76,8 @@ export function ClosetScreen() {
       ) : (
         <AppCard style={styles.empty}>
           <Ionicons name="images-outline" size={42} color={colors.accentTeal} />
-          <Text style={styles.emptyTitle}>
-            {isLoading ? '불러오는 중이에요' : error || '비어 있어요'}
-          </Text>
-          {!isLoading ? (
-            <ImageUploadBox compact title={isUploading ? '업로드 중' : '사진 추가'} disabled={isUploading} onPress={handleUpload} />
-          ) : null}
+          <Text style={styles.emptyTitle}>{error || '비어 있어요'}</Text>
+          <ImageUploadBox compact title={isUploading ? '업로드 중' : '사진 추가'} disabled={isUploading} onPress={handleUpload} />
         </AppCard>
       )}
     </ScreenContainer>

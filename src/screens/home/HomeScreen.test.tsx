@@ -57,6 +57,10 @@ async function mount(): Promise<renderer.ReactTestRenderer> {
   return tree;
 }
 
+function refreshButton(tree: renderer.ReactTestRenderer): ReactTestInstance {
+  return tree.root.find((node) => node.props.accessibilityLabel === '새 추천 받기');
+}
+
 function chip(tree: renderer.ReactTestRenderer, label: string): ReactTestInstance {
   return tree.root.find(
     (node) => node.props.label === label && typeof node.props.onPress === 'function',
@@ -152,5 +156,67 @@ describe('HomeScreen search', () => {
     await mount();
 
     expect(cacheWrite).toHaveBeenCalled();
+  });
+});
+
+describe('HomeScreen refresh', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    requestHome.mockReset();
+    requestHome.mockResolvedValue(recommendation);
+    cacheWrite.mockClear();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('fetches a new set when the refresh button is pressed', async () => {
+    // 브라우저 새로고침으로는 캐시된 추천이 그대로 다시 뜬다. 버튼이 유일한 통로다.
+    const tree = await mount();
+
+    await press(tree, refreshButton(tree));
+
+    expect(requestHome).toHaveBeenCalledTimes(2);
+  });
+
+  it('varies the refresh seed so the same tiles do not come back', async () => {
+    const tree = await mount();
+
+    await press(tree, refreshButton(tree));
+
+    const [, firstSeed] = requestHome.mock.calls[0];
+    const [, secondSeed] = requestHome.mock.calls[1];
+    expect(secondSeed).not.toBe(firstSeed);
+  });
+
+  it('refreshes within the current search instead of resetting it', async () => {
+    const tree = await mount();
+
+    await type(tree, '바지');
+    await submit(tree);
+    await press(tree, refreshButton(tree));
+
+    expect(lastPrompt()).toBe('바지');
+  });
+
+  it('updates the cached default feed so a browser reload shows the new set', async () => {
+    const tree = await mount();
+    cacheWrite.mockClear();
+
+    await press(tree, refreshButton(tree));
+
+    expect(cacheWrite).toHaveBeenCalled();
+  });
+
+  it('stops refreshing once the per-session limit is reached', async () => {
+    // 새 추천 한 번이 Gemini 호출 한 번이다. 연타로 비용이 새지 않게 막는다.
+    const tree = await mount();
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await press(tree, refreshButton(tree));
+    }
+
+    expect(requestHome).toHaveBeenCalledTimes(1 + 5);
   });
 });

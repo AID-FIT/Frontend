@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { ProductCard } from '../../components/fashion/ProductCard';
@@ -15,9 +15,7 @@ import { readCache, writeCache } from '../../utils/cache';
 import type { Product, Recommendation } from '../../types/fashion';
 
 const categories = ['캐주얼', '여름', '미니멀', '데이트룩'];
-const endReachedMessage = '모든 추천 아이템을 보았어요! 아래로 당겨 새롭게 아이템을 추천해드릴게요!';
-const edgeThreshold = 24;
-const bottomPullThreshold = 36;
+const endReachedMessage = '모든 추천 아이템을 보았어요! 위의 새로고침 버튼으로 새 추천을 받아보세요.';
 const refreshLimitPerSession = 5;
 const refreshCooldownMs = 5 * 60 * 1000;
 // 홈 추천은 진입할 때마다 Gemini를 호출해 응답이 10초 안팎 걸리고 비용도 든다.
@@ -35,25 +33,14 @@ export function HomeScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshingRecommendations, setIsRefreshingRecommendations] = useState(false);
-  const [isBottomPullArmed, setIsBottomPullArmed] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
   const [cooldownRemainingSeconds, setCooldownRemainingSeconds] = useState(0);
   const [error, setError] = useState('');
   const requestKeyRef = useRef(0);
   const refreshSeedRef = useRef(0);
   const listRef = useRef<FlatList<Product>>(null);
-  const scrollOffsetRef = useRef(0);
-  const distanceFromBottomRef = useRef(Number.POSITIVE_INFINITY);
   const refreshCountRef = useRef(0);
   const cooldownUntilRef = useRef(0);
-  const dragStartedAtBottomRef = useRef(false);
-  const isBottomPullArmedRef = useRef(false);
-  const wheelRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const setBottomPullArmed = useCallback((nextValue: boolean) => {
-    isBottomPullArmedRef.current = nextValue;
-    setIsBottomPullArmed(nextValue);
-  }, []);
 
   const recommendationToProducts = useCallback((recommendation: Recommendation, refreshSeed: number): Product[] => (
     recommendation.items.map((item, index) => ({
@@ -80,7 +67,6 @@ export function HomeScreen() {
     } else {
       setIsRefreshingRecommendations(true);
     }
-    setBottomPullArmed(false);
     setError('');
     getHomeRecommendation(nextQuery.trim(), refreshSeed)
       .then((recommendation: Recommendation) => {
@@ -109,7 +95,7 @@ export function HomeScreen() {
         setIsInitialLoading(false);
         setIsRefreshingRecommendations(false);
       });
-  }, [recommendationToProducts, setBottomPullArmed]);
+  }, [recommendationToProducts]);
 
   // 칩(무드)과 입력창(자유 요청)은 둘 다 "추가로 원하는 점"이라 함께 보낸다.
   // 한쪽이 다른 쪽을 덮어쓰면 방금 입력한 요청이 조용히 사라진다.
@@ -160,16 +146,6 @@ export function HomeScreen() {
     refreshRecommendationSet();
   }, [canStartRefresh, isInitialLoading, isRefreshingRecommendations, products.length, refreshRecommendationSet, startRefreshCooldown]);
 
-  const handleEndReached = useCallback(() => {
-    if (!isInitialLoading && !isRefreshingRecommendations && products.length > 0) {
-      setBottomPullArmed(false);
-    }
-  }, [isInitialLoading, isRefreshingRecommendations, products.length, setBottomPullArmed]);
-
-  const handlePullRefresh = useCallback(() => {
-    requestRefreshRecommendationSet();
-  }, [requestRefreshRecommendationSet]);
-
   const handleCategoryPress = useCallback((category: string) => {
     // 같은 칩을 다시 누르면 해제한다. 해제할 방법이 없으면 한 번 누른 뒤로는
     // 취향 기반 기본 추천으로 돌아갈 수 없다.
@@ -178,62 +154,7 @@ export function HomeScreen() {
     loadProducts([nextCategory, query.trim()].filter(Boolean).join(' '), 0, true);
   }, [loadProducts, query, selectedCategory]);
 
-  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    scrollOffsetRef.current = contentOffset.y;
-    distanceFromBottomRef.current = contentSize.height - layoutMeasurement.height - contentOffset.y;
-
-    if (distanceFromBottomRef.current <= edgeThreshold) {
-      handleEndReached();
-    }
-
-    if (
-      dragStartedAtBottomRef.current &&
-      distanceFromBottomRef.current <= -bottomPullThreshold &&
-      !isRefreshingRecommendations
-    ) {
-      setBottomPullArmed(true);
-    }
-  }, [handleEndReached, isRefreshingRecommendations, setBottomPullArmed]);
-
-  const handleScrollBeginDrag = useCallback(() => {
-    dragStartedAtBottomRef.current = distanceFromBottomRef.current <= edgeThreshold;
-    setBottomPullArmed(
-      dragStartedAtBottomRef.current &&
-      !isInitialLoading &&
-      !isRefreshingRecommendations &&
-      products.length > 0 &&
-      getCooldownRemainingSeconds() <= 0 &&
-      refreshCountRef.current < refreshLimitPerSession,
-    );
-  }, [getCooldownRemainingSeconds, isInitialLoading, isRefreshingRecommendations, products.length, setBottomPullArmed]);
-
-  const handleScrollEndDrag = useCallback(() => {
-    if (dragStartedAtBottomRef.current && isBottomPullArmedRef.current) {
-      setBottomPullArmed(false);
-      requestRefreshRecommendationSet();
-    }
-    dragStartedAtBottomRef.current = false;
-    setBottomPullArmed(false);
-  }, [requestRefreshRecommendationSet, setBottomPullArmed]);
-
-  const wheelHandlers = {
-    onWheel: (event: { nativeEvent?: { deltaY?: number }; deltaY?: number }) => {
-      const deltaY = event.nativeEvent?.deltaY ?? event.deltaY ?? 0;
-      if (deltaY > 0 && distanceFromBottomRef.current <= edgeThreshold) {
-        dragStartedAtBottomRef.current = true;
-        setBottomPullArmed(true);
-        if (wheelRefreshTimerRef.current) {
-          clearTimeout(wheelRefreshTimerRef.current);
-        }
-        wheelRefreshTimerRef.current = setTimeout(() => {
-          handleScrollEndDrag();
-        }, 500);
-      }
-    },
-    onMouseUp: handleScrollEndDrag,
-    onTouchEnd: handleScrollEndDrag,
-  };
+  const canRefresh = !isInitialLoading && !isRefreshingRecommendations && cooldownRemainingSeconds <= 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -258,12 +179,6 @@ export function HomeScreen() {
     };
   }, [loadProducts]);
 
-  useEffect(() => () => {
-    if (wheelRefreshTimerRef.current) {
-      clearTimeout(wheelRefreshTimerRef.current);
-    }
-  }, []);
-
   useEffect(() => {
     if (cooldownRemainingSeconds <= 0) {
       return undefined;
@@ -286,6 +201,25 @@ export function HomeScreen() {
     <>
       <View style={styles.header}>
         <Text style={styles.greeting}>최신 코디 정보를 가져왔어요</Text>
+        {/* 브라우저 새로고침으로는 캐시된 추천이 그대로 다시 뜬다.
+            새 추천을 받는 길은 이 버튼뿐이므로 항상 보이는 자리에 둔다. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="새 추천 받기"
+          onPress={requestRefreshRecommendationSet}
+          disabled={!canRefresh}
+          style={({ pressed }) => [
+            styles.refreshButton,
+            !canRefresh && styles.refreshButtonDisabled,
+            pressed && canRefresh && styles.refreshButtonPressed,
+          ]}
+        >
+          {isRefreshingRecommendations ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Ionicons name="refresh" size={20} color={canRefresh ? colors.primary : colors.subText} />
+          )}
+        </Pressable>
       </View>
 
       <View style={styles.searchWrap}>
@@ -314,7 +248,7 @@ export function HomeScreen() {
 
   return (
     <ScreenContainer scroll={false}>
-      <View style={styles.feed} {...wheelHandlers}>
+      <View style={styles.feed}>
         <FlatList
           ref={listRef}
           data={products}
@@ -324,22 +258,6 @@ export function HomeScreen() {
           columnWrapperStyle={styles.row}
           contentContainerStyle={styles.grid}
           showsVerticalScrollIndicator={false}
-          onScroll={handleScroll}
-          onScrollBeginDrag={handleScrollBeginDrag}
-          onScrollEndDrag={handleScrollEndDrag}
-          scrollEventThrottle={16}
-          onEndReached={handleEndReached}
-          onEndReachedThreshold={0.42}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshingRecommendations && scrollOffsetRef.current <= 0}
-              onRefresh={handlePullRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-            />
-          }
-          bounces
-          alwaysBounceVertical
           style={styles.feedList}
           ListEmptyComponent={
             isInitialLoading ? (
@@ -352,11 +270,6 @@ export function HomeScreen() {
             products.length > 0 ? (
               <View style={styles.footer}>
                 {isRefreshingRecommendations ? (
-                  <>
-                    <ActivityIndicator size="small" color={colors.primary} />
-                    <Text style={styles.footerText}>새 추천을 불러오는 중이에요</Text>
-                  </>
-                ) : isBottomPullArmed ? (
                   <>
                     <ActivityIndicator size="small" color={colors.primary} />
                     <Text style={styles.footerText}>새 추천을 불러오는 중이에요</Text>
@@ -382,11 +295,32 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
     paddingTop: spacing.xxl,
     paddingBottom: spacing.lg,
-    gap: 0,
+  },
+  refreshButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.pill,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  refreshButtonPressed: {
+    opacity: 0.6,
+  },
+  refreshButtonDisabled: {
+    opacity: 0.5,
   },
   greeting: {
+    flex: 1,
+    minWidth: 0,
     color: colors.text,
     fontSize: typography.heading,
     lineHeight: 44,

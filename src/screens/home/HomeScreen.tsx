@@ -62,6 +62,7 @@ export function HomeScreen() {
       tags: [item.category],
       imageTone: item.imageTone,
       imageUrl: item.product?.imageUrl,
+      productUrl: item.product?.productUrl,
       aiRecommended: true,
     }))
   ), []);

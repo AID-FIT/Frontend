@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+import { AI_REQUEST_TIMEOUT_MS, apiClient } from './apiClient';
 import { normalizeAssetUrl } from '../utils/url';
 
 const ACCEPTED_IMAGE_TYPES = [
@@ -36,9 +36,8 @@ export async function uploadImage(file: File): Promise<UploadedImage> {
   formData.append('file', file);
 
   const response = await apiClient.post<UploadedImage>('/images', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: AI_REQUEST_TIMEOUT_MS,
   });
 
   return {
@@ -53,7 +52,9 @@ export async function uploadImage(file: File): Promise<UploadedImage> {
  * 클라이언트가 별도 요청으로 이어서 태운다.
  */
 export async function analyzeImage(imageId: string): Promise<UploadedImage> {
-  const response = await apiClient.post<UploadedImage>(`/images/${imageId}/analyze`);
+  const response = await apiClient.post<UploadedImage>(`/images/${imageId}/analyze`, undefined, {
+    timeout: AI_REQUEST_TIMEOUT_MS,
+  });
   return {
     ...response.data,
     image_url: normalizeAssetUrl(response.data.image_url) ?? response.data.image_url,
@@ -71,7 +72,9 @@ export type PendingAnalysisResult = {
  * 업로드 직후의 분석 요청이 도달하지 못한 경우(네트워크 끊김, 앱 종료)를 회수한다.
  */
 export async function analyzePendingImages(): Promise<PendingAnalysisResult> {
-  const response = await apiClient.post<PendingAnalysisResult>('/images/analyze-pending');
+  const response = await apiClient.post<PendingAnalysisResult>('/images/analyze-pending', undefined, {
+    timeout: AI_REQUEST_TIMEOUT_MS,
+  });
   return response.data;
 }
 

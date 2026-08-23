@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+import { AI_REQUEST_TIMEOUT_MS, apiClient } from './apiClient';
 import type { AgentRecommendationResponse } from './recommendationService';
 
 export type ChatRole = 'user' | 'assistant';
@@ -58,9 +58,10 @@ export async function sendMessage(
   query: string,
   imageUrls: string[] = [],
 ): Promise<SendMessageResult> {
-  const response = await apiClient.post<SendMessageResult>(`/chats/${conversationId}/messages`, {
-    query,
-    image_urls: imageUrls,
-  });
+  const response = await apiClient.post<SendMessageResult>(
+    `/chats/${conversationId}/messages`,
+    { query, image_urls: imageUrls },
+    { timeout: AI_REQUEST_TIMEOUT_MS },
+  );
   return response.data;
 }

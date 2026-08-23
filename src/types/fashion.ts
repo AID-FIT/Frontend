@@ -6,6 +6,8 @@ export type Product = {
   tags: string[];
   imageTone: string;
   imageUrl?: string | null;
+  /** 상품 페이지 주소. 카드를 누르면 여기로 이동한다. */
+  productUrl?: string | null;
   aiRecommended?: boolean;
 };
 
@@ -20,6 +22,7 @@ export type OutfitItem = {
     brand: string;
     price: number | null;
     imageUrl: string | null;
+    productUrl: string | null;
   } | null;
 };
 

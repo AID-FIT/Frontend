@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
@@ -12,8 +12,16 @@ type ProductCardProps = {
 };
 
 export function ProductCard({ product }: ProductCardProps) {
+  const productUrl = product.productUrl;
+
   return (
-    <View style={styles.card}>
+    <Pressable
+      accessibilityRole={productUrl ? 'link' : undefined}
+      accessibilityLabel={productUrl ? `${product.name} 상품 페이지 열기` : undefined}
+      disabled={!productUrl}
+      onPress={() => productUrl && Linking.openURL(productUrl)}
+      style={({ pressed }) => [styles.card, pressed && productUrl ? styles.pressed : null]}
+    >
       <View style={[styles.image, { backgroundColor: product.imageTone }]}>
         {product.imageUrl ? (
           <Image source={{ uri: product.imageUrl }} style={styles.productImage} resizeMode="cover" />
@@ -44,7 +52,7 @@ export function ProductCard({ product }: ProductCardProps) {
           ))}
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -57,6 +65,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.hairlineLight,
     overflow: 'hidden',
+  },
+  pressed: {
+    opacity: 0.82,
   },
   image: {
     height: 150,

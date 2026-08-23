@@ -6,6 +6,14 @@ export const apiClient = axios.create({
   timeout: 8000,
 });
 
+/**
+ * AI가 답을 만드는 요청용 타임아웃.
+ * 추천 한 건은 Gemini 호출 여러 번을 거쳐 10초를 넘긴다. 기본 8초로는
+ * 정상 응답이 오는 중에 요청이 끊겨 "답변을 받지 못했어요"가 뜬다.
+ * 서버 함수 한도(60초)에 맞춘다.
+ */
+export const AI_REQUEST_TIMEOUT_MS = 60000;
+
 export type NormalizedApiError = {
   status: number | null;
   message: string;

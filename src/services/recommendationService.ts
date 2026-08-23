@@ -1,5 +1,5 @@
 import type { Recommendation } from '../types/fashion';
-import { apiClient } from './apiClient';
+import { AI_REQUEST_TIMEOUT_MS, apiClient } from './apiClient';
 import { normalizeAssetUrl } from '../utils/url';
 
 export type AgentRecommendationItem = {
@@ -67,13 +67,16 @@ export function mapAgentRecommendation(response: AgentRecommendationResponse): R
         brand: item.brand ?? item.source,
         price: item.price,
         imageUrl: normalizeAssetUrl(item.image_url),
+        productUrl: item.product_url,
       },
     })),
   };
 }
 
 export async function createRecommendation(payload: RecommendationCreatePayload): Promise<Recommendation> {
-  const response = await apiClient.post<AgentRecommendationResponse>('/recommendations', payload);
+  const response = await apiClient.post<AgentRecommendationResponse>('/recommendations', payload, {
+    timeout: AI_REQUEST_TIMEOUT_MS,
+  });
   return mapAgentRecommendation(response.data);
 }
 
@@ -84,6 +87,7 @@ export async function getRecommendation(recommendationId: string): Promise<Recom
 
 export async function getHomeRecommendation(prompt = '', refreshSeed = 0): Promise<Recommendation> {
   const response = await apiClient.get<AgentRecommendationResponse>('/recommendations/home', {
+    timeout: AI_REQUEST_TIMEOUT_MS,
     params: {
       prompt,
       refresh_seed: refreshSeed,

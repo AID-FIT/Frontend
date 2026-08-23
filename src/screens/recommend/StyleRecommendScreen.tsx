@@ -248,10 +248,9 @@ export function StyleRecommendScreen() {
   };
 
   return (
-    // 좌우 여백은 각 영역에서 준다. 넓은 화면에서는 대화가 한쪽으로 늘어지지
-    // 않도록 가운데 정렬된 고정 폭 안에 담는다.
+    // 입력 바의 구분선이 대화 폭 끝까지 닿도록 좌우 여백은 각 영역에서 준다.
     <ScreenContainer scroll={false} padded={false}>
-      <View style={styles.page}>
+      <>
         <View style={styles.header}>
           <Text style={styles.title}>스타일 추천</Text>
         </View>
@@ -300,21 +299,12 @@ export function StyleRecommendScreen() {
             onSend={handleSend}
           />
         </KeyboardAvoidingView>
-      </View>
+      </>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  // 대화는 한 줄 길이가 너무 길어지면 읽기 어렵다. 넓은 화면에서도 폭을 묶고
-  // 가운데로 모아, 입력 바 좌우 버튼이 양 끝으로 벌어지지 않게 한다.
-  page: {
-    flex: 1,
-    width: '100%',
-    maxWidth: 720,
-    alignSelf: 'center',
-    minHeight: 0,
-  },
   flex: {
     flex: 1,
     minHeight: 0,

@@ -1,14 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
-import {
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { NoticeBanner } from '../../components/common/NoticeBanner';
 import { ChatBubble } from '../../components/chat/ChatBubble';
 import { ChatComposer } from '../../components/chat/ChatComposer';
@@ -229,20 +220,6 @@ export function StyleRecommendScreen() {
     }
   };
 
-  const handleNewConversation = async () => {
-    setError('');
-    try {
-      const conversation = await createConversation();
-      setConversationId(conversation.id);
-      setMessages([]);
-      setAttachments([]);
-      setFingerprints([]);
-      setDraft('');
-    } catch {
-      setError('새 대화를 시작하지 못했어요.');
-    }
-  };
-
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const recommendations = item.role === 'assistant' ? item.payload.recommendations ?? [] : [];
     const tips = item.role === 'assistant' ? item.payload.style_guide?.tips ?? [] : [];
@@ -261,18 +238,6 @@ export function StyleRecommendScreen() {
     <ScreenContainer scroll={false} padded={false}>
       <View style={styles.header}>
         <Text style={styles.title}>스타일 추천</Text>
-        <Pressable
-          accessibilityLabel="새 대화 시작"
-          disabled={isSending || messages.length === 0}
-          onPress={handleNewConversation}
-          style={({ pressed }) => [
-            styles.newChat,
-            pressed && styles.newChatPressed,
-            (isSending || messages.length === 0) && styles.disabled,
-          ]}
-        >
-          <Ionicons name="create-outline" size={18} color={colors.primary} />
-        </Pressable>
       </View>
 
       <KeyboardAvoidingView
@@ -290,12 +255,12 @@ export function StyleRecommendScreen() {
           ListHeaderComponent={
             messages.length === 0 && !isBootstrapping ? (
               <View style={styles.intro}>
-                <ChatBubble role="assistant" content={GREETING} />
                 <NoticeBanner
                   icon="shirt-outline"
                   title="사진 한 장에 옷은 한 벌만 나오게 찍어주세요"
                   description={`여러 벌이 함께 담기면 옷을 정확히 알아보지 못해요. 한 벌씩 나눠 찍어 최대 ${MAX_ATTACHMENTS}장까지 첨부할 수 있어요.`}
                 />
+                <ChatBubble role="assistant" content={GREETING} />
               </View>
             ) : null
           }
@@ -327,9 +292,6 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xxl,
     paddingBottom: spacing.lg,
@@ -341,22 +303,6 @@ const styles = StyleSheet.create({
     letterSpacing: letterSpacing.heading,
     fontFamily: fontFamily.heavy,
     fontWeight: fontWeight.heavy,
-  },
-  newChat: {
-    width: 38,
-    height: 38,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  newChatPressed: {
-    opacity: 0.82,
-  },
-  disabled: {
-    opacity: 0.45,
   },
   list: {
     flexGrow: 1,

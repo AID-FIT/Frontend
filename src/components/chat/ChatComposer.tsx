@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Skeleton } from '../common/Skeleton';
@@ -31,7 +32,13 @@ export function ChatComposer({
   onRemoveAttachment,
   onSend,
 }: ChatComposerProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const hasAttachments = attachments.length > 0 || pendingAttachmentCount > 0;
+
+  const handlePickFromMenu = () => {
+    setIsMenuOpen(false);
+    onAttach();
+  };
 
   return (
     <View style={styles.wrap}>
@@ -59,18 +66,42 @@ export function ChatComposer({
         </View>
       ) : null}
 
+      {isMenuOpen ? (
+        <>
+          {/* 바깥 아무 곳이나 누르면 닫히도록 위쪽 영역을 덮는다. */}
+          <Pressable
+            accessibilityLabel="첨부 메뉴 닫기"
+            onPress={() => setIsMenuOpen(false)}
+            style={styles.backdrop}
+          />
+          <View style={styles.popover}>
+            <Pressable
+              accessibilityLabel="사진 선택하기"
+              onPress={handlePickFromMenu}
+              style={({ pressed }) => [styles.popoverItem, pressed && styles.popoverItemPressed]}
+            >
+              <Ionicons name="images-outline" size={18} color={colors.primary} />
+              <Text style={styles.popoverLabel}>사진 선택하기</Text>
+            </Pressable>
+            {/* + 버튼을 가리키는 꼬리 */}
+            <View style={styles.popoverTail} />
+          </View>
+        </>
+      ) : null}
+
       <View style={styles.inputRow}>
         <Pressable
           accessibilityLabel="사진 첨부"
           disabled={isUploading || isSending}
-          onPress={onAttach}
+          onPress={() => setIsMenuOpen((open) => !open)}
           style={({ pressed }) => [
             styles.iconButton,
+            isMenuOpen && styles.iconButtonActive,
             pressed && styles.iconButtonPressed,
             (isUploading || isSending) && styles.disabled,
           ]}
         >
-          <Ionicons name="image-outline" size={20} color={colors.primary} />
+          <Ionicons name="add" size={22} color={isMenuOpen ? colors.white : colors.primary} />
         </Pressable>
 
         <TextInput
@@ -114,6 +145,58 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.background,
+  },
+  // 입력 바 위쪽 화면 전체를 덮어 바깥 터치를 받는다.
+  backdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: '100%',
+    height: 1200,
+  },
+  popover: {
+    position: 'absolute',
+    left: spacing.xl,
+    bottom: '100%',
+    marginBottom: spacing.xs,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    shadowColor: colors.canvasDark,
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  popoverItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  popoverItemPressed: {
+    opacity: 0.7,
+  },
+  popoverLabel: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: fontFamily.bold,
+    fontWeight: fontWeight.bold,
+  },
+  popoverTail: {
+    position: 'absolute',
+    left: 14,
+    bottom: -5,
+    width: 10,
+    height: 10,
+    backgroundColor: colors.white,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+    transform: [{ rotate: '45deg' }],
   },
   attachments: {
     flexDirection: 'row',
@@ -159,6 +242,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  iconButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   iconButtonPressed: {
     opacity: 0.82,

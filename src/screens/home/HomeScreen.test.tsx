@@ -423,6 +423,68 @@ describe('HomeScreen progress', () => {
     expect(texts(tree)).not.toContain('상품에서 골랐어요');
   });
 
+  it('shows progress while searching, not just on first load', async () => {
+    // 검색 중에는 이전 타일이 남아 목록이 비지 않는다. 진행 표시를
+    // ListEmptyComponent에 두면 이 경로에서만 아무것도 보이지 않는다.
+    const tree = await mount();
+    const release = streamPending([
+      { node: 'musinsa_rag', label: '상품에서 골랐어요', detail: '후보 30건' },
+    ]);
+
+    await type(tree, '청바지');
+    await submit(tree);
+    const shown = texts(tree);
+    await renderer.act(async () => {
+      release(recommendation());
+    });
+
+    expect(shown).toContain('상품에서 골랐어요');
+  });
+
+  it('shows progress while a category chip is loading', async () => {
+    const tree = await mount();
+    const release = streamPending([
+      { node: 'style_ranker', label: '취향에 맞게 순서를 매겼어요', detail: '4가지 종류' },
+    ]);
+
+    await press(chip(tree, '바지'));
+    const shown = texts(tree);
+    await renderer.act(async () => {
+      release(recommendation());
+    });
+
+    expect(shown).toContain('취향에 맞게 순서를 매겼어요');
+  });
+
+  it('drops stale tiles when the conditions change', async () => {
+    // 새 조건과 맞지 않는 타일이 그대로 보이면 검색이 안 된 것처럼 읽힌다.
+    const tree = await mount();
+    expect(texts(tree)).toContain('와이드 슬랙스');
+    const release = streamPending([]);
+
+    await press(chip(tree, '바지'));
+    const shown = texts(tree);
+    await renderer.act(async () => {
+      release(recommendation());
+    });
+
+    expect(shown).not.toContain('와이드 슬랙스');
+  });
+
+  it('keeps the current tiles while refreshing the same conditions', async () => {
+    // 같은 조건이라 화면을 비울 이유가 없다. 비우면 깜빡인다.
+    const tree = await mount();
+    const release = streamPending([]);
+
+    await press(byLabel(tree, '새 추천 받기'));
+    const shown = texts(tree);
+    await renderer.act(async () => {
+      release(recommendation());
+    });
+
+    expect(shown).toContain('와이드 슬랙스');
+  });
+
   it('marks estimated progress so it is not mistaken for real progress', async () => {
     streamHome.mockRejectedValue(new Error('streaming is not supported here'));
     let release: (value: Recommendation) => void = () => {};

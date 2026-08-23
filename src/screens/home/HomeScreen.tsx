@@ -132,7 +132,12 @@ export function HomeScreen() {
     const isCurrent = () => requestKeyRef.current === requestKey;
 
     if (showInitialLoader) {
+      // 조건이 바뀐 요청이다. 이전 결과를 남겨 두면 새 조건과 맞지 않는 타일이
+      // 그대로 보여 검색이 안 된 것처럼 읽힌다.
       setIsInitialLoading(true);
+      setProducts([]);
+      setApplied(null);
+      setAiMessage('');
     } else {
       setIsRefreshingRecommendations(true);
     }
@@ -429,9 +434,10 @@ export function HomeScreen() {
         </View>
       ) : null}
 
-      {isRefreshingRecommendations ? (
-        <AgentProgress steps={progressSteps} live={isProgressLive} />
-      ) : null}
+      {/* 검색·필터·새로고침 어느 경로든 기다리는 동안 같은 진행 표시를 본다.
+          목록이 비었을 때만 뜨는 ListEmptyComponent에 두면 타일이 남아 있는
+          검색 경로에서는 아무것도 보이지 않는다. */}
+      <AgentProgress steps={progressSteps} live={isProgressLive} />
     </>
   );
 
@@ -457,10 +463,7 @@ export function HomeScreen() {
           style={styles.feedList}
           ListEmptyComponent={
             isInitialLoading ? (
-              <>
-                <AgentProgress steps={progressSteps} live={isProgressLive} />
-                <ProductGridSkeleton count={homeTileCount} />
-              </>
+              <ProductGridSkeleton count={homeTileCount} />
             ) : (
               <Text style={styles.stateText}>{error || emptyMessage}</Text>
             )

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
@@ -15,48 +14,11 @@ import { getHomeRecommendation } from '../../services/recommendationService';
 import type { Product, Recommendation } from '../../types/fashion';
 
 const categories = ['캐주얼', '여름', '미니멀', '데이트룩'];
-const heroTitle = '오늘의 코디';
-const titleGradient = ['#0B1F3B', '#2EC4B6'];
 const endReachedMessage = '모든 추천 아이템을 보았어요! 아래로 당겨 새롭게 아이템을 추천해드릴게요!';
 const edgeThreshold = 24;
 const bottomPullThreshold = 36;
 const refreshLimitPerSession = 5;
 const refreshCooldownMs = 5 * 60 * 1000;
-
-function hexToRgb(hex: string) {
-  const value = hex.replace('#', '');
-  return {
-    r: parseInt(value.slice(0, 2), 16),
-    g: parseInt(value.slice(2, 4), 16),
-    b: parseInt(value.slice(4, 6), 16),
-  };
-}
-
-function interpolateHexColor(from: string, to: string, progress: number) {
-  const start = hexToRgb(from);
-  const end = hexToRgb(to);
-  const r = Math.round(start.r + (end.r - start.r) * progress);
-  const g = Math.round(start.g + (end.g - start.g) * progress);
-  const b = Math.round(start.b + (end.b - start.b) * progress);
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
-function GradientHeroTitle() {
-  const letters = Array.from(heroTitle);
-
-  return (
-    <Text style={styles.heroTitle} accessibilityLabel={heroTitle}>
-      {letters.map((letter, index) => {
-        const progress = letters.length <= 1 ? 0 : index / (letters.length - 1);
-        return (
-          <Text key={`${letter}-${index}`} style={{ color: interpolateHexColor(titleGradient[0], titleGradient[1], progress) }}>
-            {letter}
-          </Text>
-        );
-      })}
-    </Text>
-  );
-}
 
 export function HomeScreen() {
   const [query, setQuery] = useState('');
@@ -286,17 +248,6 @@ export function HomeScreen() {
         <Text style={styles.greeting}>최신 코디 정보를 가져왔어요</Text>
       </View>
 
-      <LinearGradient colors={[colors.navySoft, colors.surfaceFilter]} style={styles.heroCard}>
-        <View style={styles.heroTop}>
-          <View style={styles.heroText}>
-            <GradientHeroTitle />
-          </View>
-          <View style={styles.heroIcon}>
-            <Ionicons name="shirt-outline" size={28} color={colors.accentTeal} />
-          </View>
-        </View>
-      </LinearGradient>
-
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={20} color={colors.subText} />
         <AppTextInput
@@ -402,41 +353,6 @@ const styles = StyleSheet.create({
     letterSpacing: letterSpacing.heading,
     fontFamily: fontFamily.heavy,
     fontWeight: fontWeight.heavy,
-  },
-  heroCard: {
-    minHeight: 124,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-    marginBottom: spacing.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.hairlineLight,
-    gap: spacing.lg,
-  },
-  heroTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.lg,
-  },
-  heroText: {
-    flex: 1,
-    gap: spacing.sm,
-  },
-  heroTitle: {
-    color: colors.text,
-    fontSize: 28,
-    lineHeight: 34,
-    letterSpacing: letterSpacing.heading,
-    fontFamily: fontFamily.heavy,
-    fontWeight: fontWeight.heavy,
-  },
-  heroIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.lg,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   searchWrap: {
     flexDirection: 'row',

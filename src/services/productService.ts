@@ -25,6 +25,7 @@ export function mapProduct(product: ProductResponse, aiRecommended = false): Pro
     id: product.id,
     brand: product.brand,
     name: product.name,
+    category: product.category,
     price: formatPrice(product.price),
     tags: product.tags,
     imageTone: '#f5f7fa',

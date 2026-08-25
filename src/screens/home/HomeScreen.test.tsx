@@ -120,6 +120,32 @@ async function submit(tree: renderer.ReactTestRenderer): Promise<void> {
   await settle();
 }
 
+/**
+ * 카테고리가 여럿 섞인 피드.
+ *
+ * 칩이 서버가 아니라 이미 받아 둔 타일을 거르므로, 필터를 확인하려면 한
+ * 응답 안에 여러 카테고리가 들어 있어야 한다.
+ */
+function feed(categories: string[]): Recommendation {
+  return recommendation({
+    items: categories.map((category, index) => ({
+      id: `item_${index}`,
+      name: `${category} 아이템 ${index}`,
+      category,
+      // 이유는 LLM이 고른 앞쪽 타일에만 붙는다. 뒤쪽은 검색 결과 그대로다.
+      reason: index === 0 ? '검정 상의와 잘 어울려요' : '',
+      imageTone: '#f5f7fa',
+      product: {
+        id: `musinsa_${index}`,
+        brand: 'Example',
+        price: 59000,
+        imageUrl: `https://image.example/${index}.jpg`,
+        productUrl: `https://www.musinsa.com/products/${index}`,
+      },
+    })),
+  });
+}
+
 function lastParams(): Record<string, unknown> {
   const calls = streamHome.mock.calls;
   return calls[calls.length - 1][0] as Record<string, unknown>;
@@ -144,34 +170,110 @@ describe('HomeScreen filters', () => {
   it('asks for taste-based recommendations on first load', async () => {
     await mount();
 
-    expect(lastParams()).toMatchObject({ prompt: '', category: '' });
+    expect(lastParams()).toMatchObject({ prompt: '' });
   });
 
-  it('sends a category chip as a real filter, not as search text', async () => {
-    // 검색어에 문자열로 합쳐 보내면 벡터 유사도에 묻힌다.
+  it('never sends a category to the agent', async () => {
+    // 카탈로그 분류는 이미 받아 둔 타일에서 거를 수 있다. 서버로 보내면
+    // 칩 하나에 13초짜리 에이전트가 통째로 다시 돈다.
+    streamHome.mockResolvedValue(feed(['상의', '바지']));
     const tree = await mount();
 
     await press(chip(tree, '바지'));
 
-    expect(lastParams()).toMatchObject({ category: '바지', prompt: '' });
+    expect(lastParams()).not.toHaveProperty('category');
   });
 
-  it('sends no category for the 전체 chip', async () => {
+  it('filters the loaded tiles without calling the agent again', async () => {
+    streamHome.mockResolvedValue(feed(['상의', '바지']));
+    const tree = await mount();
+    const before = streamHome.mock.calls.length;
+
+    await press(chip(tree, '바지'));
+
+    expect(streamHome.mock.calls.length).toBe(before);
+  });
+
+  it('shows only the tiles in the chosen category', async () => {
+    streamHome.mockResolvedValue(feed(['상의', '바지']));
+    const tree = await mount();
+
+    await press(chip(tree, '바지'));
+    const shown = texts(tree);
+
+    expect(shown).toContain('바지 아이템 1');
+    expect(shown).not.toContain('상의 아이템 0');
+  });
+
+  it('adds a second category instead of replacing the first', async () => {
+    // 하나만 고를 수 있으면 "상의랑 아우터"를 같이 보는 길이 없다.
+    streamHome.mockResolvedValue(feed(['상의', '바지', '아우터']));
+    const tree = await mount();
+
+    await press(chip(tree, '상의'));
+    await press(chip(tree, '아우터'));
+    const shown = texts(tree);
+
+    expect(shown).toContain('상의 아이템 0');
+    expect(shown).toContain('아우터 아이템 2');
+    expect(shown).not.toContain('바지 아이템 1');
+  });
+
+  it('drops a category when it is tapped again', async () => {
+    streamHome.mockResolvedValue(feed(['상의', '바지']));
+    const tree = await mount();
+
+    await press(chip(tree, '바지'));
+    await press(chip(tree, '바지'));
+
+    expect(texts(tree)).toContain('상의 아이템 0');
+  });
+
+  it('clears every category with the 전체 chip', async () => {
+    streamHome.mockResolvedValue(feed(['상의', '바지']));
     const tree = await mount();
 
     await press(chip(tree, '바지'));
     await press(chip(tree, '전체'));
 
-    expect(lastParams()).toMatchObject({ category: '' });
+    expect(texts(tree)).toContain('상의 아이템 0');
   });
 
-  it('keeps the typed request when a category chip is tapped', async () => {
+  it('shows how many tiles each category holds', async () => {
+    // 눌러 보기 전에 결과를 알 수 없으면 빈 화면을 만나야만 알게 된다.
+    streamHome.mockResolvedValue(feed(['바지', '바지', '상의']));
     const tree = await mount();
 
-    await type(tree, '청바지');
-    await press(chip(tree, '바지'));
+    expect(chip(tree, '바지').props.count).toBe(2);
+    expect(chip(tree, '상의').props.count).toBe(1);
+  });
 
-    expect(lastParams()).toMatchObject({ category: '바지', prompt: '청바지' });
+  it('blocks a category this feed has nothing for', async () => {
+    streamHome.mockResolvedValue(feed(['상의']));
+    const tree = await mount();
+
+    expect(chip(tree, '모자').props.disabled).toBe(true);
+    expect(chip(tree, '상의').props.disabled).toBe(false);
+  });
+
+  it('drops a chosen category the new feed no longer carries', async () => {
+    // 고른 채로 두면 검색 결과가 도착해도 타일이 하나도 없는 화면이 된다.
+    streamHome.mockResolvedValue(feed(['상의', '모자']));
+    const tree = await mount();
+    await press(chip(tree, '모자'));
+
+    streamHome.mockResolvedValue(feed(['상의', '바지']));
+    await type(tree, '청바지');
+    await submit(tree);
+
+    expect(texts(tree)).toContain('상의 아이템 0');
+  });
+
+  it('offers every category the catalog actually has', async () => {
+    // 백엔드 _HOME_CATEGORIES에 있는데 칩이 없으면 그 옷은 걸러 볼 수 없다.
+    const tree = await mount();
+
+    expect(() => chip(tree, '원피스/스커트')).not.toThrow();
   });
 
   it('sends the typed request on submit', async () => {
@@ -190,22 +292,24 @@ describe('HomeScreen cache', () => {
     const tree = await mount();
     const defaultKey = cacheWrite.mock.calls[0][0];
 
-    await press(chip(tree, '바지'));
-    const categoryKey = cacheWrite.mock.calls[cacheWrite.mock.calls.length - 1][0];
+    await type(tree, '청바지');
+    await submit(tree);
+    const searchKey = cacheWrite.mock.calls[cacheWrite.mock.calls.length - 1][0];
 
-    expect(categoryKey).not.toBe(defaultKey);
+    expect(searchKey).not.toBe(defaultKey);
   });
 
   it('serves a cached condition without calling the agent again', async () => {
     const tree = await mount();
     cacheRead.mockResolvedValue({
-      products: [{ id: 'cached', brand: 'b', name: 'n', price: 'p', tags: [], imageTone: '#fff' }],
+      products: [{ id: 'cached', brand: 'b', name: 'n', category: '바지', price: 'p', tags: [], imageTone: '#fff' }],
       applied: null,
       message: '',
     });
     const before = streamHome.mock.calls.length;
 
-    await press(chip(tree, '바지'));
+    await type(tree, '청바지');
+    await submit(tree);
 
     expect(streamHome.mock.calls.length).toBe(before);
   });
@@ -214,9 +318,9 @@ describe('HomeScreen cache', () => {
     // 타일만 복원하면 "적용된 조건"과 AI 한마디가 직전 조건의 것으로 남는다.
     const tree = await mount();
     cacheRead.mockResolvedValue({
-      products: [{ id: 'cached', brand: 'b', name: 'n', price: 'p', tags: [], imageTone: '#fff' }],
+      products: [{ id: 'cached', brand: 'b', name: 'n', category: '바지', price: 'p', tags: [], imageTone: '#fff' }],
       applied: {
-        category: '바지',
+        category: null,
         mood: null,
         season: null,
         ageRange: '30대',
@@ -227,7 +331,8 @@ describe('HomeScreen cache', () => {
       message: '캐시에 담긴 한마디',
     });
 
-    await press(chip(tree, '바지'));
+    await type(tree, '청바지');
+    await submit(tree);
     const shown = texts(tree);
 
     expect(shown).toContain('30대');
@@ -271,7 +376,8 @@ describe('HomeScreen refresh', () => {
       await press(byLabel(tree, '새 추천 받기'));
     }
     const exhausted = streamHome.mock.calls.length;
-    await press(chip(tree, '바지'));
+    await type(tree, '청바지');
+    await submit(tree);
 
     expect(streamHome.mock.calls.length).toBe(exhausted + 1);
   });
@@ -294,25 +400,27 @@ describe('HomeScreen result grounding', () => {
   });
 
   it('lets the user drop a category filter from the summary', async () => {
+    streamHome.mockResolvedValue(feed(['상의', '바지']));
     const tree = await mount();
-    streamHome.mockResolvedValue(
-      recommendation({
-        appliedFilters: {
-          category: '바지',
-          mood: null,
-          season: null,
-          ageRange: '20대',
-          preferredStyles: [],
-          prompt: '',
-          resultCount: 1,
-        },
-      }),
-    );
     await press(chip(tree, '바지'));
+    const before = streamHome.mock.calls.length;
 
     await press(byLabel(tree, '카테고리 바지 해제'));
 
-    expect(lastParams()).toMatchObject({ category: '' });
+    expect(texts(tree)).toContain('상의 아이템 0');
+    // 해제도 로컬이다. 조건을 뺐다고 에이전트를 다시 부를 이유가 없다.
+    expect(streamHome.mock.calls.length).toBe(before);
+  });
+
+  it('counts what is on screen, not what the server returned', async () => {
+    // 서버가 준 개수를 그대로 쓰면 칩을 눌러도 숫자가 그대로라 필터가
+    // 걸리지 않은 것처럼 읽힌다.
+    streamHome.mockResolvedValue(feed(['상의', '바지', '바지']));
+    const tree = await mount();
+
+    await press(chip(tree, '바지'));
+
+    expect(texts(tree)).toContain('2');
   });
 });
 
@@ -349,18 +457,19 @@ describe('HomeScreen failure handling', () => {
       recommendation({
         items: [],
         appliedFilters: {
-          category: '바지',
+          category: null,
           mood: null,
           season: null,
           ageRange: null,
           preferredStyles: [],
-          prompt: '',
+          prompt: '청바지',
           resultCount: 0,
         },
       }),
     );
 
-    await press(chip(tree, '바지'));
+    await type(tree, '청바지');
+    await submit(tree);
 
     expect(texts(tree).some((text) => text.includes('조건을 하나 빼고'))).toBe(true);
   });
@@ -441,19 +550,14 @@ describe('HomeScreen progress', () => {
     expect(shown).toContain('상품에서 골랐어요');
   });
 
-  it('shows progress while a category chip is loading', async () => {
+  it('does not make the user wait for a category chip', async () => {
+    // 칩이 로딩을 띄우면 필터가 아니라 또 하나의 요청으로 읽힌다.
+    streamHome.mockResolvedValue(feed(['상의', '바지']));
     const tree = await mount();
-    const release = streamPending([
-      { node: 'style_ranker', label: '취향에 맞게 순서를 매겼어요', detail: '4가지 종류' },
-    ]);
 
     await press(chip(tree, '바지'));
-    const shown = texts(tree);
-    await renderer.act(async () => {
-      release(recommendation());
-    });
 
-    expect(shown).toContain('취향에 맞게 순서를 매겼어요');
+    expect(texts(tree)).toContain('바지 아이템 1');
   });
 
   it('drops stale tiles when the conditions change', async () => {
@@ -462,7 +566,8 @@ describe('HomeScreen progress', () => {
     expect(texts(tree)).toContain('와이드 슬랙스');
     const release = streamPending([]);
 
-    await press(chip(tree, '바지'));
+    await type(tree, '청바지');
+    await submit(tree);
     const shown = texts(tree);
     await renderer.act(async () => {
       release(recommendation());

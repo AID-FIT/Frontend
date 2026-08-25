@@ -20,6 +20,7 @@ function product(overrides: Partial<Product> = {}): Product {
     id: 'musinsa_1',
     brand: 'Example Brand',
     name: '와이드 슬랙스',
+    category: '바지',
     price: '59,000원',
     tags: ['바지'],
     imageTone: '#f5f7fa',

@@ -2,6 +2,8 @@ export type Product = {
   id: string;
   brand: string;
   name: string;
+  /** 카탈로그 분류. 홈 카테고리 칩이 이 값으로 타일을 거른다. */
+  category: string;
   price: string;
   tags: string[];
   imageTone: string;

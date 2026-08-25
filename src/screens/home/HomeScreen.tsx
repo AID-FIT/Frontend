@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { AgentProgress, type ProgressStep } from '../../components/fashion/AgentProgress';
@@ -15,10 +15,10 @@ import { getHomeRecommendation, streamHomeRecommendation } from '../../services/
 import { readCache, writeCache } from '../../utils/cache';
 import type { AppliedFilters, Product, Recommendation } from '../../types/fashion';
 
-// 카탈로그(product_vectors.category)에 실제로 들어 있는 값이어야 필터가 걸린다.
+// 카탈로그(product_vectors.category)에 실제로 들어 있는 값이어야 타일이 걸린다.
 // 백엔드 _HOME_CATEGORIES와 같은 목록이다.
 const allCategory = '전체';
-const categories = [allCategory, '상의', '바지', '아우터', '신발', '가방', '모자'];
+const categories = ['상의', '바지', '아우터', '신발', '가방', '모자', '원피스/스커트'];
 const endReachedMessage = '모든 추천 아이템을 보았어요! 위의 새로고침 버튼으로 새 추천을 받아보세요.';
 const refreshLimitPerSession = 5;
 const refreshCooldownMs = 5 * 60 * 1000;
@@ -26,12 +26,17 @@ const refreshCooldownMs = 5 * 60 * 1000;
 // 사용자가 직접 새로고침하기 전까지는 최근 결과를 다시 보여준다.
 const homeCacheKeyPrefix = 'aidfit_home_recommendation';
 const homeCacheTtlMs = 30 * 60 * 1000;
-// 백엔드가 채워 보내는 타일 수(_HOME_TILE_COUNT)와 맞춘다. 스켈레톤이 더 적으면
-// 로딩이 끝나는 순간 목록이 늘어나며 화면이 튄다.
+// 첫 화면을 덮을 만큼만 그린다. 백엔드는 이보다 훨씬 많은 타일을 보내지만
+// 스켈레톤을 그만큼 그려도 보이지 않는 자리라 렌더 비용만 든다.
 const homeTileCount = 8;
 
+/**
+ * 서버에 보내는 조건.
+ *
+ * 카테고리는 여기 없다. 카탈로그 분류는 이미 받아 둔 타일에서 걸러 낼 수
+ * 있는 값이라 AI를 다시 부를 이유가 없다. 자연어 요청만 AI가 해석해야 한다.
+ */
 type HomeConditions = {
-  category: string;
   prompt: string;
 };
 
@@ -49,8 +54,8 @@ type CachedHomeView = {
 
 // 조건마다 캐시를 따로 둔다. 하나의 키를 쓰면 "바지"를 검색한 결과가 기본
 // 피드 자리에 저장돼, 다음 진입에 조건 없이도 되살아난다.
-function cacheKeyFor({ category, prompt }: HomeConditions): string {
-  return `${homeCacheKeyPrefix}:${category}:${prompt}`;
+function cacheKeyFor({ prompt }: HomeConditions): string {
+  return `${homeCacheKeyPrefix}:${prompt}`;
 }
 
 // 서버가 진행을 보내 주지 않는 환경(네이티브에는 fetch 스트림이 없다)에서 쓸
@@ -81,8 +86,8 @@ function describeFailure(error: unknown): string {
 
 export function HomeScreen() {
   const [query, setQuery] = useState('');
-  // 칩은 "전체"로 시작한다. 첫 진입은 옷장·취향만으로 추천한다.
-  const [selectedCategory, setSelectedCategory] = useState(allCategory);
+  // 고른 카테고리. 비어 있으면 "전체"다. 여러 개를 함께 고를 수 있다.
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [applied, setApplied] = useState<AppliedFilters | null>(null);
   const [aiMessage, setAiMessage] = useState('');
@@ -110,6 +115,7 @@ export function HomeScreen() {
       id: `${item.product?.id ?? item.id}-${refreshSeed}-${index}`,
       brand: item.product?.brand ?? 'AID-FIT',
       name: item.name,
+      category: item.category,
       price: item.product?.price === null || item.product?.price === undefined
         ? '가격 미정'
         : `${item.product.price.toLocaleString('ko-KR')}원`,
@@ -118,7 +124,9 @@ export function HomeScreen() {
       imageUrl: item.product?.imageUrl,
       productUrl: item.product?.productUrl,
       reason: item.reason,
-      aiRecommended: true,
+      // 이유가 붙은 타일만 AI가 직접 고른 것이다. 나머지는 검색·랭킹 결과를
+      // 그대로 실은 것이라 배지를 달면 거짓이 된다.
+      aiRecommended: Boolean(item.reason),
     }))
   ), []);
 
@@ -149,7 +157,6 @@ export function HomeScreen() {
     const params = {
       prompt: conditions.prompt,
       refreshSeed,
-      category: conditions.category === allCategory ? '' : conditions.category,
     };
 
     const startEstimating = () => {
@@ -212,11 +219,11 @@ export function HomeScreen() {
       });
   }, [clearEstimateTimers, recommendationToProducts]);
 
-  const conditions: HomeConditions = { category: selectedCategory, prompt: query.trim() };
+  const conditions: HomeConditions = { prompt: query.trim() };
 
   const refreshRecommendationSet = useCallback(() => {
     loadProducts(conditions, refreshSeedRef.current + 1, false);
-  }, [conditions.category, conditions.prompt, loadProducts]);
+  }, [conditions.prompt, loadProducts]);
 
   const getCooldownRemainingSeconds = useCallback(() => (
     Math.max(0, Math.ceil((cooldownUntilRef.current - Date.now()) / 1000))
@@ -279,23 +286,42 @@ export function HomeScreen() {
     loadProducts(next, 0, true);
   }, [clearEstimateTimers, loadProducts]);
 
-  const handleCategoryPress = useCallback((category: string) => {
-    setSelectedCategory(category);
-    void search({ category, prompt: query.trim() });
-  }, [query, search]);
+  // 칩은 이미 받아 둔 타일을 거르기만 한다. AI를 다시 부르지 않으므로
+  // 기다릴 일도, 새로고침 예산을 쓸 일도 없다.
+  const toggleCategory = useCallback((category: string) => {
+    setSelectedCategories((current) => (
+      current.includes(category)
+        ? current.filter((selected) => selected !== category)
+        : [...current, category]
+    ));
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, []);
 
-  const clearFilter = useCallback((kind: 'category' | 'prompt') => {
-    const next: HomeConditions = {
-      category: kind === 'category' ? allCategory : selectedCategory,
-      prompt: kind === 'prompt' ? '' : query.trim(),
-    };
-    if (kind === 'category') {
-      setSelectedCategory(allCategory);
-    } else {
-      setQuery('');
-    }
-    void search(next);
-  }, [query, search, selectedCategory]);
+  const clearCategories = useCallback(() => {
+    setSelectedCategories([]);
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, []);
+
+  const clearPrompt = useCallback(() => {
+    setQuery('');
+    void search({ prompt: '' });
+  }, [search]);
+
+  // 카테고리마다 지금 몇 칸이 걸리는지. 눌러 보기 전에 알 수 있어야
+  // 빈 화면을 만나지 않는다.
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    products.forEach((product) => {
+      counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
+    });
+    return counts;
+  }, [products]);
+
+  const visibleProducts = useMemo(() => (
+    selectedCategories.length === 0
+      ? products
+      : products.filter((product) => selectedCategories.includes(product.category))
+  ), [products, selectedCategories]);
 
   const canRefresh = !isInitialLoading && !isRefreshingRecommendations && cooldownRemainingSeconds <= 0;
 
@@ -303,7 +329,7 @@ export function HomeScreen() {
     let cancelled = false;
 
     (async () => {
-      const initial: HomeConditions = { category: allCategory, prompt: '' };
+      const initial: HomeConditions = { prompt: '' };
       const cached = await readCache<CachedHomeView>(cacheKeyFor(initial), homeCacheTtlMs);
       if (cancelled) {
         return;
@@ -326,6 +352,14 @@ export function HomeScreen() {
   }, [loadProducts]);
 
   useEffect(() => clearEstimateTimers, [clearEstimateTimers]);
+
+  // 새 피드에 없는 카테고리가 골라진 채로 남으면 타일이 하나도 없는 화면이 된다.
+  useEffect(() => {
+    setSelectedCategories((current) => {
+      const available = current.filter((category) => categoryCounts.has(category));
+      return available.length === current.length ? current : available;
+    });
+  }, [categoryCounts]);
 
   useEffect(() => {
     if (cooldownRemainingSeconds <= 0) {
@@ -381,16 +415,36 @@ export function HomeScreen() {
         />
       </View>
 
-      <View style={styles.chips}>
-        {categories.map((category) => (
-          <Chip
-            key={category}
-            label={category}
-            selected={selectedCategory === category}
-            onPress={() => handleCategoryPress(category)}
-          />
-        ))}
-      </View>
+      {/* 카테고리가 여덟 종이라 줄바꿈하면 헤더가 세 줄로 불어나 상품
+          그리드가 화면 밖으로 밀린다. 고른 칩은 아래 "적용된 조건"에도
+          남으므로 가로로 흘려도 무엇을 골랐는지 놓치지 않는다. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipsScroll}
+        contentContainerStyle={styles.chips}
+      >
+        <Chip
+          label={allCategory}
+          selected={selectedCategories.length === 0}
+          count={products.length}
+          onPress={clearCategories}
+        />
+        {categories.map((category) => {
+          const count = categoryCounts.get(category) ?? 0;
+          return (
+            <Chip
+              key={category}
+              label={category}
+              count={count}
+              // 이번 피드에 없는 카테고리다. 눌러 봐야 빈 화면만 나온다.
+              disabled={count === 0}
+              selected={selectedCategories.includes(category)}
+              onPress={() => toggleCategory(category)}
+            />
+          );
+        })}
+      </ScrollView>
 
       {/* 무엇으로 찾았는지 보이지 않으면 결과가 왜 이런지 알 수 없다.
           각 조건은 눌러서 해제할 수 있다. */}
@@ -401,29 +455,32 @@ export function HomeScreen() {
           {applied.preferredStyles.map((style) => (
             <Text key={style} style={styles.conditionTag}>{style}</Text>
           ))}
-          {applied.category ? (
+          {selectedCategories.map((category) => (
             <Pressable
+              key={category}
               accessibilityRole="button"
-              accessibilityLabel={`카테고리 ${applied.category} 해제`}
-              onPress={() => clearFilter('category')}
+              accessibilityLabel={`카테고리 ${category} 해제`}
+              onPress={() => toggleCategory(category)}
             >
               <Text style={[styles.conditionTag, styles.conditionTagRemovable]}>
-                {applied.category} ✕
+                {category} ✕
               </Text>
             </Pressable>
-          ) : null}
+          ))}
           {applied.prompt ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`검색어 ${applied.prompt} 해제`}
-              onPress={() => clearFilter('prompt')}
+              onPress={clearPrompt}
             >
               <Text style={[styles.conditionTag, styles.conditionTagRemovable]}>
                 “{applied.prompt}” ✕
               </Text>
             </Pressable>
           ) : null}
-          <Text style={styles.conditionsCount}>{applied.resultCount}건</Text>
+          {/* 서버가 준 개수가 아니라 지금 화면에 걸린 개수다. 칩을 누르면
+              바로 줄어들어야 필터가 걸렸다는 것이 보인다. */}
+          <Text style={styles.conditionsCount}>{visibleProducts.length}건</Text>
         </View>
       ) : null}
 
@@ -441,19 +498,20 @@ export function HomeScreen() {
     </>
   );
 
-  const hasNarrowedSearch = Boolean(
-    (applied?.category ?? null) || (applied?.prompt ?? ''),
-  );
-  const emptyMessage = hasNarrowedSearch
-    ? '이 조건에 맞는 상품을 찾지 못했어요. 위의 조건을 하나 빼고 다시 찾아보세요.'
-    : '표시할 추천이 없어요.';
+  // 칩은 이번 피드에 있는 카테고리만 누를 수 있어 보통 여기까지 오지 않는다.
+  // 검색으로 좁힌 뒤 결과가 없을 때가 실제로 마주치는 경우다.
+  const emptyMessage = selectedCategories.length > 0
+    ? '고른 카테고리에 남은 추천이 없어요. 카테고리를 해제해 보세요.'
+    : applied?.prompt
+      ? '이 조건에 맞는 상품을 찾지 못했어요. 위의 조건을 하나 빼고 다시 찾아보세요.'
+      : '표시할 추천이 없어요.';
 
   return (
     <ScreenContainer scroll={false}>
       <View style={styles.feed}>
         <FlatList
           ref={listRef}
-          data={products}
+          data={visibleProducts}
           keyExtractor={(item) => item.id}
           numColumns={2}
           ListHeaderComponent={header}
@@ -589,6 +647,10 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: 0,
     backgroundColor: 'transparent',
+  },
+  chipsScroll: {
+    // 세로 목록 안의 가로 스크롤이다. 남은 높이를 다 먹지 않게 막는다.
+    flexGrow: 0,
   },
   chips: {
     flexDirection: 'row',

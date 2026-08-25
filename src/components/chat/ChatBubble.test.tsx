@@ -139,3 +139,44 @@ describe('ChatRecommendationList', () => {
     expect(tree.toJSON()).toBeNull();
   });
 });
+
+describe('ChatRecommendationList card', () => {
+  it('shows the whole garment instead of cropping it', () => {
+    const tree = render(<ChatRecommendationList items={[item()]} />);
+
+    const image = tree.root.find((node) => node.props.source?.uri === 'https://image.example/item.jpg');
+    expect(image.props.resizeMode).toBe('contain');
+  });
+
+  it('lets a long reason be opened in full', () => {
+    const long =
+      '검은 재킷의 각진 어깨선과 대비되도록 밑단이 넓은 슬랙스를 골랐습니다. 톤을 낮춘 회색이라 상의가 강해도 부딪히지 않습니다.';
+    const tree = render(<ChatRecommendationList items={[item({ reason: long })]} />);
+    const paragraph = tree.root.findAll(
+      (node) => node.props.numberOfLines === 3 && typeof node.props.onLayout === 'function',
+    )[0];
+    const hidden = tree.root.findAll((node) => node.props['aria-hidden'])[0];
+
+    renderer.act(() => {
+      paragraph.props.onLayout({ nativeEvent: { layout: { height: 48 } } });
+      hidden.props.onLayout({ nativeEvent: { layout: { height: 96 } } });
+    });
+
+    expect(textContent(tree.root)).toContain('더보기');
+  });
+
+  it('leaves a short reason alone', () => {
+    const tree = render(<ChatRecommendationList items={[item({ reason: '색이 잘 맞아요.' })]} />);
+    const paragraph = tree.root.findAll(
+      (node) => node.props.numberOfLines === 3 && typeof node.props.onLayout === 'function',
+    )[0];
+    const hidden = tree.root.findAll((node) => node.props['aria-hidden'])[0];
+
+    renderer.act(() => {
+      paragraph.props.onLayout({ nativeEvent: { layout: { height: 16 } } });
+      hidden.props.onLayout({ nativeEvent: { layout: { height: 16 } } });
+    });
+
+    expect(textContent(tree.root)).not.toContain('더보기');
+  });
+});

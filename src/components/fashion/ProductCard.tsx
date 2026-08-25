@@ -6,6 +6,7 @@ import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight } from '../../constants/typography';
 import type { Product } from '../../types/fashion';
 import { AIRecommendBadge } from './AIRecommendBadge';
+import { ExpandableReason } from './ExpandableReason';
 
 type ProductCardProps = {
   product: Product;
@@ -24,7 +25,8 @@ export function ProductCard({ product }: ProductCardProps) {
     >
       <View style={[styles.image, { backgroundColor: product.imageTone }]}>
         {product.imageUrl ? (
-          <Image source={{ uri: product.imageUrl }} style={styles.productImage} resizeMode="cover" />
+          // 잘라서 채우면 옷의 절반만 보인다. 남는 자리는 imageTone이 메운다.
+          <Image source={{ uri: product.imageUrl }} style={styles.productImage} resizeMode="contain" />
         ) : (
           <View style={styles.imageShape}>
             <Ionicons name="shirt-outline" size={38} color={colors.primary} />
@@ -46,9 +48,12 @@ export function ProductCard({ product }: ProductCardProps) {
         <Text style={styles.price}>{product.price}</Text>
         {/* AI가 이 상품을 고른 이유. 없으면 자리를 차지하지 않는다. */}
         {product.reason ? (
-          <Text style={styles.reason} numberOfLines={2}>
-            {product.reason}
-          </Text>
+          <ExpandableReason
+            text={product.reason}
+            collapsedLines={2}
+            textStyle={styles.reason}
+            linkSize={12}
+          />
         ) : null}
         <View style={styles.tagRow}>
           {product.tags.slice(0, 2).map((tag) => (
@@ -76,7 +81,8 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
   image: {
-    height: 150,
+    // 의류 사진은 대개 세로형이다. 고정 높이(150)로는 상하가 잘렸다.
+    aspectRatio: 3 / 4,
     justifyContent: 'center',
     overflow: 'hidden',
   },

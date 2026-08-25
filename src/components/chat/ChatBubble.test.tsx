@@ -63,6 +63,50 @@ describe('ChatBubble', () => {
 
     expect(tree.root.findAllByType(Text)).toHaveLength(0);
   });
+
+  it('replays the clothes that were taken from the closet', () => {
+    const tree = render(
+      <ChatBubble
+        role="user"
+        content="이 재킷에 어울리는 바지"
+        closetItems={[
+          {
+            closet_item_id: 'c1',
+            name: '검은 재킷',
+            image_url: 'https://cdn.example/c1.jpg',
+            category: '아우터',
+          },
+        ]}
+      />,
+    );
+
+    expect(textContent(tree.root)).toContain('옷장에서 가져온 옷');
+    expect(tree.root.findAllByType(Image).map((node) => node.props.source.uri)).toEqual([
+      'https://cdn.example/c1.jpg',
+    ]);
+  });
+
+  it('keeps the bubble intact when the closet item was deleted since', () => {
+    // 스냅샷은 남지만 이미지가 사라졌을 수 있다. 말풍선까지 무너지면 안 된다.
+    const tree = render(
+      <ChatBubble
+        role="user"
+        content="이 재킷에 어울리는 바지"
+        closetItems={[
+          { closet_item_id: 'c1', name: '검은 재킷', image_url: null, category: null },
+        ]}
+      />,
+    );
+
+    expect(textContent(tree.root)).toContain('옷장에서 가져온 옷');
+    expect(tree.root.findAllByType(Image)).toHaveLength(1);
+  });
+
+  it('shows no closet row on a plain message', () => {
+    const tree = render(<ChatBubble role="user" content="추천해줘" />);
+
+    expect(textContent(tree.root)).not.toContain('옷장에서 가져온 옷');
+  });
 });
 
 describe('ChatRecommendationList', () => {

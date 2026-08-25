@@ -3,11 +3,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '../../components/common/AppButton';
 import { AppCard } from '../../components/common/AppCard';
+import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { NoticeBanner } from '../../components/common/NoticeBanner';
 import { ImageUploadBox } from '../../components/fashion/ImageUploadBox';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { colors } from '../../constants/colors';
+import {
+  ageOptions,
+  genderOptions,
+  HEIGHT_ERROR_MESSAGE,
+  parseHeight,
+  styleOptions,
+} from '../../constants/profileOptions';
 import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing } from '../../constants/typography';
@@ -22,12 +30,12 @@ import {
 import { completeOnboarding as completeOnboardingRequest } from '../../services/userService';
 import { useAppStore } from '../../store/useAppStore';
 
-const ageOptions = ['10대', '20대', '30대', '40대 이상'];
-const styleOptions = ['캐주얼', '미니멀', '스트릿', '포멀', '스포티'];
 const MAX_CLOSET_IMAGES = 4;
 
 export function OnboardingScreen() {
   const [age, setAge] = useState('20대');
+  const [gender, setGender] = useState<string | null>(null);
+  const [height, setHeight] = useState('');
   // id만 들고 있으면 썸네일을 그릴 수 없어 업로드 결과를 통째로 보관한다.
   const [closetImages, setClosetImages] = useState<UploadedImage[]>([]);
   // closetImages와 같은 순서로 유지되는 내용 지문 목록.
@@ -90,9 +98,18 @@ export function OnboardingScreen() {
 
   const handleComplete = async () => {
     setError('');
+
+    const heightCm = parseHeight(height);
+    if (heightCm === 'invalid') {
+      setError(HEIGHT_ERROR_MESSAGE);
+      return;
+    }
+
     setIsSaving(true);
     completeOnboardingRequest({
       age_range: age,
+      gender,
+      height_cm: heightCm,
       styles,
       closet_image_ids: closetImages.map((image) => image.id),
     })
@@ -123,6 +140,35 @@ export function OnboardingScreen() {
             <Chip key={option} label={option} selected={age === option} onPress={() => setAge(option)} />
           ))}
         </View>
+      </View>
+
+      <View style={screenStyles.section}>
+        <View style={screenStyles.sectionHeader}>
+          <Ionicons name="body-outline" size={24} color={colors.primary} />
+          <Text style={screenStyles.sectionTitle}>성별과 키</Text>
+        </View>
+        <Text style={screenStyles.sectionHint}>
+          비워 둬도 괜찮아요. 알려 주면 더 잘 맞는 옷을 찾아드려요.
+        </Text>
+        <View style={screenStyles.chips}>
+          {genderOptions.map((option) => (
+            <Chip
+              key={option.value}
+              label={option.label}
+              selected={gender === option.value}
+              // 다시 누르면 해제된다.
+              onPress={() => setGender((current) => (current === option.value ? null : option.value))}
+            />
+          ))}
+        </View>
+        <AppTextInput
+          value={height}
+          onChangeText={setHeight}
+          placeholder="키 (예: 175)"
+          keyboardType="number-pad"
+          maxLength={3}
+          accessibilityLabel="키(cm)"
+        />
       </View>
 
       <View style={screenStyles.section}>
@@ -212,6 +258,14 @@ const screenStyles = StyleSheet.create({
     fontSize: 21,
     fontFamily: fontFamily.bold,
     fontWeight: fontWeight.bold,
+  },
+  sectionHint: {
+    color: colors.subText,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: -spacing.sm,
+    fontFamily: fontFamily.medium,
+    fontWeight: fontWeight.medium,
   },
   chips: {
     flexDirection: 'row',

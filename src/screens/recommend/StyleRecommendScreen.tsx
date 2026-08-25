@@ -13,6 +13,7 @@ import {
 import { ChatBubble } from '../../components/chat/ChatBubble';
 import { ChatComposer } from '../../components/chat/ChatComposer';
 import { ChatRecommendationList } from '../../components/chat/ChatRecommendationList';
+import { ClosetPickerSheet } from '../../components/chat/ClosetPickerSheet';
 import { ConversationList } from '../../components/chat/ConversationList';
 import { TypingIndicator } from '../../components/chat/TypingIndicator';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
@@ -23,12 +24,15 @@ import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
 import {
   createConversation,
+  deleteAllConversations,
+  deleteConversation,
   listConversations,
   listMessages,
   sendMessage,
   type ChatMessage,
   type Conversation,
 } from '../../services/chatService';
+import { listClosetItems, type ClosetItem } from '../../services/closetService';
 import {
   getImageFingerprint,
   pickImageFiles,
@@ -37,6 +41,8 @@ import {
 } from '../../services/imageService';
 
 const MAX_ATTACHMENTS = 8;
+// 백엔드의 MAX_SELECTED_CLOSET_ITEMS와 같은 값. 넘겨 보내면 422가 된다.
+const MAX_CLOSET_SELECTION = 8;
 const GREETING =
   '안녕하세요! 옷 사진을 올리거나 원하는 스타일을 말씀해 주시면 어울리는 코디를 찾아드릴게요.';
 
@@ -52,6 +58,13 @@ export function StyleRecommendScreen() {
   // attachments와 같은 순서로 유지되는 내용 지문 목록.
   const [fingerprints, setFingerprints] = useState<string[]>([]);
   const [uploadingCount, setUploadingCount] = useState(0);
+  // 옷장에서 가져온 옷. 비어 있으면 서버가 옷장 전체를 본다.
+  const [selectedClosetItems, setSelectedClosetItems] = useState<ClosetItem[]>([]);
+  const [closetItems, setClosetItems] = useState<ClosetItem[]>([]);
+  const [isClosetPickerOpen, setIsClosetPickerOpen] = useState(false);
+  const [isLoadingCloset, setIsLoadingCloset] = useState(false);
+  const [closetError, setClosetError] = useState('');
+  const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
@@ -195,6 +208,32 @@ export function StyleRecommendScreen() {
     setFingerprints((current) => current.filter((_, i) => i !== index));
   };
 
+  const handleOpenClosetPicker = async () => {
+    setError('');
+    setClosetError('');
+    setIsClosetPickerOpen(true);
+    // 이미 받아 둔 목록을 먼저 그려 두고 뒤에서 갱신한다. 옷장은 다른 탭에서
+    // 바뀔 수 있어 열 때마다 다시 확인한다.
+    setIsLoadingCloset(closetItems.length === 0);
+
+    try {
+      setClosetItems(await listClosetItems());
+    } catch {
+      setClosetError('옷장을 불러오지 못했어요.');
+    } finally {
+      setIsLoadingCloset(false);
+    }
+  };
+
+  const handleConfirmClosetSelection = (items: ClosetItem[]) => {
+    setSelectedClosetItems(items);
+    setIsClosetPickerOpen(false);
+  };
+
+  const handleRemoveClosetItem = (closetItemId: string) => {
+    setSelectedClosetItems((current) => current.filter((item) => item.id !== closetItemId));
+  };
+
   const handleSend = async () => {
     if (!conversationId || !canSend) {
       return;
@@ -202,6 +241,7 @@ export function StyleRecommendScreen() {
 
     const query = draft.trim();
     const imageUrls = attachments;
+    const closetSelection = selectedClosetItems;
     setError('');
     setIsSending(true);
 
@@ -214,16 +254,31 @@ export function StyleRecommendScreen() {
         conversation_id: conversationId,
         role: 'user',
         content: query,
-        payload: { image_urls: imageUrls },
+        payload: {
+          image_urls: imageUrls,
+          // 서버가 메시지에 남기는 스냅샷과 같은 모양으로 맞춘다.
+          closet_items: closetSelection.map((item) => ({
+            closet_item_id: item.id,
+            name: item.name,
+            image_url: item.image_url,
+            category: item.category,
+          })),
+        },
         created_at: new Date().toISOString(),
       },
     ]);
     setDraft('');
     setAttachments([]);
     setFingerprints([]);
+    setSelectedClosetItems([]);
 
     try {
-      const result = await sendMessage(conversationId, query, imageUrls);
+      const result = await sendMessage(
+        conversationId,
+        query,
+        imageUrls,
+        closetSelection.map((item) => item.id),
+      );
       setMessages((current) => [
         // 낙관적으로 띄운 말풍선을 서버가 확정한 id로 교체한다.
         ...current.map((message) =>
@@ -256,6 +311,7 @@ export function StyleRecommendScreen() {
       setMessages((current) => current.filter((message) => message.id !== pendingId));
       setDraft(query);
       setAttachments(imageUrls);
+      setSelectedClosetItems(closetSelection);
       setError('답변을 받지 못했어요. 다시 시도해 주세요.');
     } finally {
       setIsSending(false);
@@ -265,6 +321,8 @@ export function StyleRecommendScreen() {
   const resetComposer = () => {
     setAttachments([]);
     setFingerprints([]);
+    setSelectedClosetItems([]);
+    setIsClosetPickerOpen(false);
     setDraft('');
   };
 
@@ -282,13 +340,8 @@ export function StyleRecommendScreen() {
     }
   };
 
-  const handleSelectConversation = async (nextId: string) => {
-    setIsSidebarOpen(false);
-    if (nextId === conversationId || isSending) {
-      return;
-    }
-
-    setError('');
+  // 삭제 뒤 남은 대화로 옮길 때도 쓰므로, "이미 열려 있으면 무시" 판단과 분리한다.
+  const openConversation = async (nextId: string) => {
     setConversationId(nextId);
     setMessages([]);
     resetComposer();
@@ -304,12 +357,95 @@ export function StyleRecommendScreen() {
     }
   };
 
+  const handleSelectConversation = async (nextId: string) => {
+    setIsSidebarOpen(false);
+    if (nextId === conversationId || isSending) {
+      return;
+    }
+
+    setError('');
+    await openConversation(nextId);
+  };
+
+  const startFreshConversation = async () => {
+    setMessages([]);
+    resetComposer();
+
+    try {
+      const conversation = await createConversation();
+      setConversations([conversation]);
+      setConversationId(conversation.id);
+    } catch {
+      setConversationId(null);
+      setError('새 대화를 시작하지 못했어요.');
+    }
+  };
+
+  const handleDeleteConversation = async (targetId: string) => {
+    if (isSending) {
+      return;
+    }
+
+    setError('');
+    setDeletingConversationId(targetId);
+
+    try {
+      await deleteConversation(targetId);
+    } catch {
+      // 목록을 미리 지우지 않았으므로 되돌릴 것이 없다.
+      setError('대화를 삭제하지 못했어요.');
+      return;
+    } finally {
+      setDeletingConversationId(null);
+    }
+
+    const remaining = conversations.filter((conversation) => conversation.id !== targetId);
+    setConversations(remaining);
+
+    if (targetId !== conversationId) {
+      return;
+    }
+
+    // 방금 보고 있던 대화가 사라졌다. 화면을 빈 채로 두지 않는다.
+    if (remaining.length > 0) {
+      await openConversation(remaining[0].id);
+      return;
+    }
+    await startFreshConversation();
+  };
+
+  const handleDeleteAllConversations = async () => {
+    if (isSending) {
+      return;
+    }
+
+    setError('');
+
+    try {
+      await deleteAllConversations();
+    } catch {
+      // 실패하면 목록을 그대로 둔다. 무엇이 남았는지 볼 수 있어야 한다.
+      setError('대화를 삭제하지 못했어요.');
+      return;
+    }
+
+    setIsSidebarOpen(false);
+    setConversations([]);
+    setMessages([]);
+    await startFreshConversation();
+  };
+
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const recommendations = item.role === 'assistant' ? item.payload.recommendations ?? [] : [];
     const tips = item.role === 'assistant' ? item.payload.style_guide?.tips ?? [] : [];
 
     return (
-      <ChatBubble role={item.role} content={item.content} imageUrls={item.payload.image_urls ?? []}>
+      <ChatBubble
+        role={item.role}
+        content={item.content}
+        imageUrls={item.payload.image_urls ?? []}
+        closetItems={item.payload.closet_items ?? []}
+      >
         {item.role === 'assistant' ? (
           <ChatRecommendationList items={recommendations} tips={tips} />
         ) : null}
@@ -332,8 +468,11 @@ export function StyleRecommendScreen() {
               conversations={conversations}
               activeId={conversationId}
               disabled={isSending}
+              deletingId={deletingConversationId}
               onSelect={handleSelectConversation}
               onNewConversation={handleNewConversation}
+              onDelete={handleDeleteConversation}
+              onDeleteAll={handleDeleteAllConversations}
             />
           </View>
         ) : null}
@@ -358,8 +497,11 @@ export function StyleRecommendScreen() {
               conversations={conversations}
               activeId={conversationId}
               disabled={isSending}
+              deletingId={deletingConversationId}
               onSelect={handleSelectConversation}
               onNewConversation={handleNewConversation}
+              onDelete={handleDeleteConversation}
+              onDeleteAll={handleDeleteAllConversations}
             />
           </View>
         ) : null}
@@ -388,20 +530,45 @@ export function StyleRecommendScreen() {
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-          <ChatComposer
-            value={draft}
-            attachments={attachments}
-            pendingAttachmentCount={uploadingCount}
-            canSend={canSend}
-            isSending={isSending}
-            isUploading={isUploading}
-            canStartNewConversation={messages.length > 0 && !isSending}
-            onChangeText={setDraft}
-            onAttach={handleAttach}
-            onNewConversation={handleNewConversation}
-            onRemoveAttachment={handleRemoveAttachment}
-            onSend={handleSend}
-          />
+          <View style={styles.composerArea}>
+            {isClosetPickerOpen ? (
+              <>
+                {/* 바깥을 누르면 닫히도록 위쪽 영역을 덮는다. */}
+                <Pressable
+                  accessibilityLabel="옷장 선택 닫기"
+                  onPress={() => setIsClosetPickerOpen(false)}
+                  style={styles.pickerBackdrop}
+                />
+                <ClosetPickerSheet
+                  items={closetItems}
+                  initialSelectedIds={selectedClosetItems.map((item) => item.id)}
+                  maxSelection={MAX_CLOSET_SELECTION}
+                  isLoading={isLoadingCloset}
+                  error={closetError}
+                  onCancel={() => setIsClosetPickerOpen(false)}
+                  onConfirm={handleConfirmClosetSelection}
+                />
+              </>
+            ) : null}
+
+            <ChatComposer
+              value={draft}
+              attachments={attachments}
+              pendingAttachmentCount={uploadingCount}
+              closetSelection={selectedClosetItems}
+              canSend={canSend}
+              isSending={isSending}
+              isUploading={isUploading}
+              canStartNewConversation={messages.length > 0 && !isSending}
+              onChangeText={setDraft}
+              onAttach={handleAttach}
+              onPickFromCloset={handleOpenClosetPicker}
+              onNewConversation={handleNewConversation}
+              onRemoveAttachment={handleRemoveAttachment}
+              onRemoveClosetItem={handleRemoveClosetItem}
+              onSend={handleSend}
+            />
+          </View>
         </KeyboardAvoidingView>
         </View>
       </View>
@@ -446,6 +613,18 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
+  },
+  // 옷장 피커가 입력 바 위로 얹히도록 기준을 만들어 준다.
+  composerArea: {
+    position: 'relative',
+  },
+  pickerBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: '100%',
+    height: 1200,
+    zIndex: 11,
   },
   flex: {
     flex: 1,

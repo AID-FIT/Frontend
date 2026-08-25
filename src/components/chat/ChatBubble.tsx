@@ -4,16 +4,24 @@ import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight } from '../../constants/typography';
-import type { ChatRole } from '../../services/chatService';
+import type { ChatRole, SelectedClosetItem } from '../../services/chatService';
 
 type ChatBubbleProps = {
   role: ChatRole;
   content: string;
   imageUrls?: string[];
+  /** 그 질문에 함께 보낸 옷장 아이템. 서버가 메시지에 남겨 둔 스냅샷이다. */
+  closetItems?: SelectedClosetItem[];
   children?: ReactNode;
 };
 
-export function ChatBubble({ role, content, imageUrls = [], children }: ChatBubbleProps) {
+export function ChatBubble({
+  role,
+  content,
+  imageUrls = [],
+  closetItems = [],
+  children,
+}: ChatBubbleProps) {
   const isUser = role === 'user';
 
   return (
@@ -24,6 +32,25 @@ export function ChatBubble({ role, content, imageUrls = [], children }: ChatBubb
             {imageUrls.map((imageUrl) => (
               <Image key={imageUrl} source={{ uri: imageUrl }} style={styles.attachment} resizeMode="cover" />
             ))}
+          </View>
+        ) : null}
+
+        {closetItems.length > 0 ? (
+          <View style={styles.closet}>
+            <Text style={[styles.closetLabel, isUser && styles.closetLabelUser]}>
+              옷장에서 가져온 옷
+            </Text>
+            <View style={styles.attachments}>
+              {closetItems.map((item) => (
+                <Image
+                  key={item.closet_item_id}
+                  // 옷장에서 지운 옷이면 이미지가 비어 있을 수 있다. 그래도 자리는 남긴다.
+                  source={{ uri: item.image_url ?? undefined }}
+                  style={styles.attachment}
+                  resizeMode="cover"
+                />
+              ))}
+            </View>
           </View>
         ) : null}
 
@@ -88,5 +115,19 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: radius.md,
     backgroundColor: colors.surfaceSoft,
+  },
+  closet: {
+    gap: spacing.xs,
+  },
+  closetLabel: {
+    color: colors.subText,
+    fontSize: 11,
+    lineHeight: 15,
+    fontFamily: fontFamily.medium,
+    fontWeight: fontWeight.medium,
+  },
+  closetLabelUser: {
+    color: colors.white,
+    opacity: 0.8,
   },
 });

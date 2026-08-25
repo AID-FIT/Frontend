@@ -3,9 +3,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 import { AppButton } from '../../components/common/AppButton';
 import { AppCard } from '../../components/common/AppCard';
+import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { ScreenContainer } from '../../components/layout/ScreenContainer';
 import { colors } from '../../constants/colors';
+import {
+  ageOptions,
+  genderLabel,
+  genderOptions,
+  HEIGHT_ERROR_MESSAGE,
+  parseHeight,
+  styleOptions,
+} from '../../constants/profileOptions';
 import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight, letterSpacing, typography } from '../../constants/typography';
@@ -17,9 +26,6 @@ import {
 } from '../../services/userService';
 import { useAppStore } from '../../store/useAppStore';
 
-const ageOptions = ['10대', '20대', '30대', '40대 이상'];
-const styleOptions = ['캐주얼', '미니멀', '스트릿', '포멀', '스포티'];
-
 export function ProfileScreen() {
   const resetSession = useAppStore((state) => state.resetSession);
   const syncUser = useAppStore((state) => state.syncUser);
@@ -28,6 +34,8 @@ export function ProfileScreen() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [draftAge, setDraftAge] = useState('');
+  const [draftGender, setDraftGender] = useState<string | null>(null);
+  const [draftHeight, setDraftHeight] = useState('');
   const [draftStyles, setDraftStyles] = useState<string[]>([]);
   const [error, setError] = useState('');
 
@@ -37,6 +45,8 @@ export function ProfileScreen() {
       .then((nextProfile) => {
         setProfile(nextProfile);
         setDraftAge(nextProfile.age_range ?? '20대');
+        setDraftGender(nextProfile.gender);
+        setDraftHeight(nextProfile.height_cm ? String(nextProfile.height_cm) : '');
         setDraftStyles(nextProfile.styles);
       })
       .catch(() => {
@@ -45,8 +55,16 @@ export function ProfileScreen() {
   }, []);
 
   const nickname = profile?.nickname ?? authUser?.nickname ?? 'AID-FIT 사용자';
-  const ageRange = profile?.age_range ?? '나이대 미설정';
   const preferredStyles = profile?.styles ?? [];
+  // 설정한 것만 가운뎃점으로 잇는다. 비어 있으면 "미설정" 한 줄로 남는다.
+  const profileSummary =
+    [
+      profile?.age_range,
+      genderLabel(profile?.gender),
+      profile?.height_cm ? `${profile.height_cm}cm` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ') || '나이대 미설정';
 
   const toggleDraftStyle = (style: string) => {
     setDraftStyles((current) =>
@@ -56,25 +74,40 @@ export function ProfileScreen() {
     );
   };
 
+  const restoreDrafts = () => {
+    setDraftAge(profile?.age_range ?? '20대');
+    setDraftGender(profile?.gender ?? null);
+    setDraftHeight(profile?.height_cm ? String(profile.height_cm) : '');
+    setDraftStyles(profile?.styles ?? []);
+  };
+
   const startEditing = () => {
     setError('');
-    setDraftAge(profile?.age_range ?? '20대');
-    setDraftStyles(profile?.styles ?? []);
+    restoreDrafts();
     setIsEditing(true);
   };
 
   const cancelEditing = () => {
     setError('');
     setIsEditing(false);
-    setDraftAge(profile?.age_range ?? '20대');
-    setDraftStyles(profile?.styles ?? []);
+    restoreDrafts();
   };
 
   const saveProfile = () => {
     setError('');
+
+    // 서버도 범위를 막지만, 저장을 눌러 본 뒤에야 알게 하지는 않는다.
+    const height = parseHeight(draftHeight);
+    if (height === 'invalid') {
+      setError(HEIGHT_ERROR_MESSAGE);
+      return;
+    }
+
     setIsSaving(true);
     updateMyPreferences({
       age_range: draftAge,
+      gender: draftGender,
+      height_cm: height,
       styles: draftStyles,
       preferred_colors: profile?.preferred_colors ?? [],
       avoid_items: profile?.avoid_items ?? [],
@@ -108,7 +141,7 @@ export function ProfileScreen() {
         </View>
         <View style={styles.profileInfo}>
           <Text style={styles.name}>{nickname}님</Text>
-          <Text style={styles.meta}>{ageRange}</Text>
+          <Text style={styles.meta}>{profileSummary}</Text>
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
       </AppCard>
@@ -126,6 +159,34 @@ export function ProfileScreen() {
               />
             ))}
           </View>
+        ) : null}
+        {isEditing ? (
+          <>
+            <Text style={styles.sectionTitle}>성별</Text>
+            <View style={styles.tags}>
+              {genderOptions.map((option) => (
+                <Chip
+                  key={option.value}
+                  label={option.label}
+                  selected={draftGender === option.value}
+                  // 다시 누르면 해제된다. 밝히고 싶지 않은 사람에게 강요하지 않는다.
+                  onPress={() =>
+                    setDraftGender((current) => (current === option.value ? null : option.value))
+                  }
+                />
+              ))}
+            </View>
+
+            <Text style={styles.sectionTitle}>키</Text>
+            <AppTextInput
+              value={draftHeight}
+              onChangeText={setDraftHeight}
+              placeholder="예: 175"
+              keyboardType="number-pad"
+              maxLength={3}
+              accessibilityLabel="키(cm)"
+            />
+          </>
         ) : null}
         {isEditing ? <Text style={styles.sectionTitle}>선호 스타일</Text> : null}
         <View style={styles.tags}>

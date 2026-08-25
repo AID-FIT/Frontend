@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { AppTextInput } from '../../components/common/AppTextInput';
 import { Chip } from '../../components/common/Chip';
 import { AgentProgress, type ProgressStep } from '../../components/fashion/AgentProgress';
 import { ProductCard } from '../../components/fashion/ProductCard';
@@ -24,21 +23,11 @@ const refreshLimitPerSession = 5;
 const refreshCooldownMs = 5 * 60 * 1000;
 // 홈 추천은 진입할 때마다 Gemini를 호출해 응답이 10초 안팎 걸리고 비용도 든다.
 // 사용자가 직접 새로고침하기 전까지는 최근 결과를 다시 보여준다.
-const homeCacheKeyPrefix = 'aidfit_home_recommendation';
+const homeCacheKey = 'aidfit_home_recommendation';
 const homeCacheTtlMs = 30 * 60 * 1000;
 // 첫 화면을 덮을 만큼만 그린다. 백엔드는 이보다 훨씬 많은 타일을 보내지만
 // 스켈레톤을 그만큼 그려도 보이지 않는 자리라 렌더 비용만 든다.
 const homeTileCount = 8;
-
-/**
- * 서버에 보내는 조건.
- *
- * 카테고리는 여기 없다. 카탈로그 분류는 이미 받아 둔 타일에서 걸러 낼 수
- * 있는 값이라 AI를 다시 부를 이유가 없다. 자연어 요청만 AI가 해석해야 한다.
- */
-type HomeConditions = {
-  prompt: string;
-};
 
 /**
  * 캐시에 담는 화면 상태.
@@ -51,12 +40,6 @@ type CachedHomeView = {
   applied: AppliedFilters | null;
   message: string;
 };
-
-// 조건마다 캐시를 따로 둔다. 하나의 키를 쓰면 "바지"를 검색한 결과가 기본
-// 피드 자리에 저장돼, 다음 진입에 조건 없이도 되살아난다.
-function cacheKeyFor({ prompt }: HomeConditions): string {
-  return `${homeCacheKeyPrefix}:${prompt}`;
-}
 
 // 서버가 진행을 보내 주지 않는 환경(네이티브에는 fetch 스트림이 없다)에서 쓸
 // 예상 단계. 실측 13초를 나눠 잡았고, 마지막 단계는 응답이 올 때까지 머문다.
@@ -85,7 +68,6 @@ function describeFailure(error: unknown): string {
 }
 
 export function HomeScreen() {
-  const [query, setQuery] = useState('');
   // 고른 카테고리. 비어 있으면 "전체"다. 여러 개를 함께 고를 수 있다.
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -135,7 +117,6 @@ export function HomeScreen() {
   ), []);
 
   const loadProducts = useCallback((
-    conditions: HomeConditions,
     refreshSeed = 0,
     showInitialLoader = true,
   ) => {
@@ -144,8 +125,6 @@ export function HomeScreen() {
     const isCurrent = () => requestKeyRef.current === requestKey;
 
     if (showInitialLoader) {
-      // 조건이 바뀐 요청이다. 이전 결과를 남겨 두면 새 조건과 맞지 않는 타일이
-      // 그대로 보여 검색이 안 된 것처럼 읽힌다.
       setIsInitialLoading(true);
       setProducts([]);
       setApplied(null);
@@ -158,10 +137,7 @@ export function HomeScreen() {
     setIsProgressLive(true);
     clearEstimateTimers();
 
-    const params = {
-      prompt: conditions.prompt,
-      refreshSeed,
-    };
+    const params = { refreshSeed };
 
     const startEstimating = () => {
       // 서버 진행을 못 받는 환경이다. 시간 기반으로 같은 목록을 진행시키되
@@ -205,7 +181,7 @@ export function HomeScreen() {
         setApplied(view.applied);
         setAiMessage(view.message);
         refreshSeedRef.current = refreshSeed;
-        void writeCache(cacheKeyFor(conditions), view);
+        void writeCache(homeCacheKey, view);
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
       })
       .catch((failure: unknown) => {
@@ -223,11 +199,9 @@ export function HomeScreen() {
       });
   }, [clearEstimateTimers, recommendationToProducts]);
 
-  const conditions: HomeConditions = { prompt: query.trim() };
-
   const refreshRecommendationSet = useCallback(() => {
-    loadProducts(conditions, refreshSeedRef.current + 1, false);
-  }, [conditions.prompt, loadProducts]);
+    loadProducts(refreshSeedRef.current + 1, false);
+  }, [loadProducts]);
 
   const getCooldownRemainingSeconds = useCallback(() => (
     Math.max(0, Math.ceil((cooldownUntilRef.current - Date.now()) / 1000))
@@ -270,26 +244,6 @@ export function HomeScreen() {
     refreshRecommendationSet();
   }, [canStartRefresh, isInitialLoading, isRefreshingRecommendations, products.length, refreshRecommendationSet, startRefreshCooldown]);
 
-  // 검색·필터는 사용자가 명시적으로 요청한 것이라 새로고침 횟수를 소모하지
-  // 않는다. 같은 조건을 다시 고르면 캐시가 있어 재호출도 없다.
-  const search = useCallback(async (next: HomeConditions) => {
-    const cached = await readCache<CachedHomeView>(cacheKeyFor(next), homeCacheTtlMs);
-    if (cached?.products?.length) {
-      // 진행 중인 요청이 뒤늦게 도착해 캐시 결과를 덮어쓰지 않도록 무효화한다.
-      requestKeyRef.current += 1;
-      clearEstimateTimers();
-      setProducts(cached.products);
-      setApplied(cached.applied ?? null);
-      setAiMessage(cached.message ?? '');
-      setError('');
-      setProgressSteps([]);
-      setIsInitialLoading(false);
-      setIsRefreshingRecommendations(false);
-      return;
-    }
-    loadProducts(next, 0, true);
-  }, [clearEstimateTimers, loadProducts]);
-
   // 칩은 이미 받아 둔 타일을 거르기만 한다. AI를 다시 부르지 않으므로
   // 기다릴 일도, 새로고침 예산을 쓸 일도 없다.
   const toggleCategory = useCallback((category: string) => {
@@ -305,11 +259,6 @@ export function HomeScreen() {
     setSelectedCategories([]);
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
-
-  const clearPrompt = useCallback(() => {
-    setQuery('');
-    void search({ prompt: '' });
-  }, [search]);
 
   // 카테고리마다 지금 몇 칸이 걸리는지. 눌러 보기 전에 알 수 있어야
   // 빈 화면을 만나지 않는다.
@@ -333,8 +282,7 @@ export function HomeScreen() {
     let cancelled = false;
 
     (async () => {
-      const initial: HomeConditions = { prompt: '' };
-      const cached = await readCache<CachedHomeView>(cacheKeyFor(initial), homeCacheTtlMs);
+      const cached = await readCache<CachedHomeView>(homeCacheKey, homeCacheTtlMs);
       if (cancelled) {
         return;
       }
@@ -347,7 +295,7 @@ export function HomeScreen() {
         return;
       }
 
-      loadProducts(initial, 0, true);
+      loadProducts(0, true);
     })();
 
     return () => {
@@ -408,17 +356,6 @@ export function HomeScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.searchWrap}>
-        <Ionicons name="search" size={20} color={colors.subText} />
-        <AppTextInput
-          placeholder="오늘 코디에 추가로 원하는 점을 입력하세요"
-          value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={() => void search(conditions)}
-          style={styles.searchInput}
-        />
-      </View>
-
       {/* 카테고리가 여덟 종이라 줄바꿈하면 헤더가 세 줄로 불어나 상품
           그리드가 화면 밖으로 밀린다. 고른 칩은 아래 "적용된 조건"에도
           남으므로 가로로 흘려도 무엇을 골랐는지 놓치지 않는다. */}
@@ -471,17 +408,6 @@ export function HomeScreen() {
               </Text>
             </Pressable>
           ))}
-          {applied.prompt ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`검색어 ${applied.prompt} 해제`}
-              onPress={clearPrompt}
-            >
-              <Text style={[styles.conditionTag, styles.conditionTagRemovable]}>
-                “{applied.prompt}” ✕
-              </Text>
-            </Pressable>
-          ) : null}
           {/* 서버가 준 개수가 아니라 지금 화면에 걸린 개수다. 칩을 누르면
               바로 줄어들어야 필터가 걸렸다는 것이 보인다. */}
           <Text style={styles.conditionsCount}>{visibleProducts.length}건</Text>
@@ -495,20 +421,17 @@ export function HomeScreen() {
         </View>
       ) : null}
 
-      {/* 검색·필터·새로고침 어느 경로든 기다리는 동안 같은 진행 표시를 본다.
+      {/* 첫 진입이든 새로고침이든 기다리는 동안 같은 진행 표시를 본다.
           목록이 비었을 때만 뜨는 ListEmptyComponent에 두면 타일이 남아 있는
-          검색 경로에서는 아무것도 보이지 않는다. */}
+          새로고침 경로에서는 아무것도 보이지 않는다. */}
       <AgentProgress steps={progressSteps} live={isProgressLive} />
     </>
   );
 
   // 칩은 이번 피드에 있는 카테고리만 누를 수 있어 보통 여기까지 오지 않는다.
-  // 검색으로 좁힌 뒤 결과가 없을 때가 실제로 마주치는 경우다.
   const emptyMessage = selectedCategories.length > 0
     ? '고른 카테고리에 남은 추천이 없어요. 카테고리를 해제해 보세요.'
-    : applied?.prompt
-      ? '이 조건에 맞는 상품을 찾지 못했어요. 위의 조건을 하나 빼고 다시 찾아보세요.'
-      : '표시할 추천이 없어요.';
+    : '표시할 추천이 없어요.';
 
   return (
     <ScreenContainer scroll={false}>
@@ -637,20 +560,6 @@ const styles = StyleSheet.create({
     letterSpacing: letterSpacing.heading,
     fontFamily: fontFamily.heavy,
     fontWeight: fontWeight.heavy,
-  },
-  searchWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    paddingLeft: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  searchInput: {
-    flex: 1,
-    borderWidth: 0,
-    backgroundColor: 'transparent',
   },
   chipsScroll: {
     // 세로 목록 안의 가로 스크롤이다. 남은 높이를 다 먹지 않게 막는다.

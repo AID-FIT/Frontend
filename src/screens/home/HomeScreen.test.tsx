@@ -91,10 +91,6 @@ function chip(tree: renderer.ReactTestRenderer, label: string): ReactTestInstanc
   );
 }
 
-function searchInput(tree: renderer.ReactTestRenderer): ReactTestInstance {
-  return tree.root.find((node) => typeof node.props.onSubmitEditing === 'function');
-}
-
 function texts(tree: renderer.ReactTestRenderer): string[] {
   return tree.root
     .findAll((node) => typeof node.type === 'string' && node.children.length > 0)
@@ -105,19 +101,6 @@ function texts(tree: renderer.ReactTestRenderer): string[] {
 async function press(node: ReactTestInstance): Promise<void> {
   await renderer.act(async () => {
     node.props.onPress();
-  });
-  await settle();
-}
-
-async function type(tree: renderer.ReactTestRenderer, value: string): Promise<void> {
-  await renderer.act(async () => {
-    searchInput(tree).props.onChangeText(value);
-  });
-}
-
-async function submit(tree: renderer.ReactTestRenderer): Promise<void> {
-  await renderer.act(async () => {
-    searchInput(tree).props.onSubmitEditing();
   });
   await settle();
 }
@@ -172,9 +155,10 @@ afterEach(() => {
 
 describe('HomeScreen filters', () => {
   it('asks for taste-based recommendations on first load', async () => {
+    // 홈은 사용자가 무엇을 찾는지 묻지 않는다. 취향만 보고 골라 와야 한다.
     await mount();
 
-    expect(lastParams()).toMatchObject({ prompt: '' });
+    expect(lastParams()).not.toHaveProperty('prompt');
   });
 
   it('never sends a category to the agent', async () => {
@@ -261,14 +245,13 @@ describe('HomeScreen filters', () => {
   });
 
   it('drops a chosen category the new feed no longer carries', async () => {
-    // 고른 채로 두면 검색 결과가 도착해도 타일이 하나도 없는 화면이 된다.
+    // 고른 채로 두면 새 추천이 도착해도 타일이 하나도 없는 화면이 된다.
     streamHome.mockResolvedValue(feed(['상의', '모자']));
     const tree = await mount();
     await press(chip(tree, '모자'));
 
     streamHome.mockResolvedValue(feed(['상의', '바지']));
-    await type(tree, '청바지');
-    await submit(tree);
+    await press(byLabel(tree, '새 추천 받기'));
 
     expect(texts(tree)).toContain('상의 아이템 0');
   });
@@ -280,47 +263,11 @@ describe('HomeScreen filters', () => {
     expect(() => chip(tree, '원피스/스커트')).not.toThrow();
   });
 
-  it('sends the typed request on submit', async () => {
-    const tree = await mount();
-
-    await type(tree, '검정 미니멀');
-    await submit(tree);
-
-    expect(lastParams()).toMatchObject({ prompt: '검정 미니멀' });
-  });
 });
 
 describe('HomeScreen cache', () => {
-  it('keeps a separate cache per condition', async () => {
-    // 하나의 키를 쓰면 검색 결과가 기본 피드 자리에 저장돼 되살아난다.
-    const tree = await mount();
-    const defaultKey = cacheWrite.mock.calls[0][0];
-
-    await type(tree, '청바지');
-    await submit(tree);
-    const searchKey = cacheWrite.mock.calls[cacheWrite.mock.calls.length - 1][0];
-
-    expect(searchKey).not.toBe(defaultKey);
-  });
-
-  it('serves a cached condition without calling the agent again', async () => {
-    const tree = await mount();
-    cacheRead.mockResolvedValue({
-      products: [{ id: 'cached', brand: 'b', name: 'n', category: '바지', price: 'p', tags: [], imageTone: '#fff' }],
-      applied: null,
-      message: '',
-    });
-    const before = streamHome.mock.calls.length;
-
-    await type(tree, '청바지');
-    await submit(tree);
-
-    expect(streamHome.mock.calls.length).toBe(before);
-  });
-
   it('restores the conditions and summary along with the tiles', async () => {
-    // 타일만 복원하면 "적용된 조건"과 AI 한마디가 직전 조건의 것으로 남는다.
-    const tree = await mount();
+    // 타일만 복원하면 "적용된 조건"과 AI 한마디가 비어 화면이 반만 살아난다.
     cacheRead.mockResolvedValue({
       products: [{ id: 'cached', brand: 'b', name: 'n', category: '바지', price: 'p', tags: [], imageTone: '#fff' }],
       applied: {
@@ -335,9 +282,7 @@ describe('HomeScreen cache', () => {
       message: '캐시에 담긴 한마디',
     });
 
-    await type(tree, '청바지');
-    await submit(tree);
-    const shown = texts(tree);
+    const shown = texts(await mount());
 
     expect(shown).toContain('30대');
     expect(shown).toContain('캐시에 담긴 한마디');
@@ -372,19 +317,6 @@ describe('HomeScreen refresh', () => {
     expect(streamHome).toHaveBeenCalledTimes(1 + 5);
   });
 
-  it('does not spend the refresh budget on searching', async () => {
-    // 검색·필터는 사용자가 명시적으로 요청한 것이라 새로고침과 성격이 다르다.
-    const tree = await mount();
-
-    for (let attempt = 0; attempt < 8; attempt += 1) {
-      await press(byLabel(tree, '새 추천 받기'));
-    }
-    const exhausted = streamHome.mock.calls.length;
-    await type(tree, '청바지');
-    await submit(tree);
-
-    expect(streamHome.mock.calls.length).toBe(exhausted + 1);
-  });
 });
 
 describe('HomeScreen result grounding', () => {
@@ -455,28 +387,6 @@ describe('HomeScreen failure handling', () => {
     expect(texts(tree).some((text) => text.includes('서버에 문제'))).toBe(true);
   });
 
-  it('suggests dropping a condition when a narrowed search finds nothing', async () => {
-    const tree = await mount();
-    streamHome.mockResolvedValue(
-      recommendation({
-        items: [],
-        appliedFilters: {
-          category: null,
-          mood: null,
-          season: null,
-          ageRange: null,
-          preferredStyles: [],
-          prompt: '청바지',
-          resultCount: 0,
-        },
-      }),
-    );
-
-    await type(tree, '청바지');
-    await submit(tree);
-
-    expect(texts(tree).some((text) => text.includes('조건을 하나 빼고'))).toBe(true);
-  });
 });
 
 describe('HomeScreen progress', () => {
@@ -536,16 +446,15 @@ describe('HomeScreen progress', () => {
     expect(texts(tree)).not.toContain('상품에서 골랐어요');
   });
 
-  it('shows progress while searching, not just on first load', async () => {
-    // 검색 중에는 이전 타일이 남아 목록이 비지 않는다. 진행 표시를
+  it('shows progress while refreshing, not just on first load', async () => {
+    // 새로고침 중에는 이전 타일이 남아 목록이 비지 않는다. 진행 표시를
     // ListEmptyComponent에 두면 이 경로에서만 아무것도 보이지 않는다.
     const tree = await mount();
     const release = streamPending([
       { node: 'musinsa_rag', label: '상품에서 골랐어요', detail: '후보 30건' },
     ]);
 
-    await type(tree, '청바지');
-    await submit(tree);
+    await press(byLabel(tree, '새 추천 받기'));
     const shown = texts(tree);
     await renderer.act(async () => {
       release(recommendation());
@@ -562,22 +471,6 @@ describe('HomeScreen progress', () => {
     await press(chip(tree, '바지'));
 
     expect(texts(tree)).toContain('바지 아이템 1');
-  });
-
-  it('drops stale tiles when the conditions change', async () => {
-    // 새 조건과 맞지 않는 타일이 그대로 보이면 검색이 안 된 것처럼 읽힌다.
-    const tree = await mount();
-    expect(texts(tree)).toContain('와이드 슬랙스');
-    const release = streamPending([]);
-
-    await type(tree, '청바지');
-    await submit(tree);
-    const shown = texts(tree);
-    await renderer.act(async () => {
-      release(recommendation());
-    });
-
-    expect(shown).not.toContain('와이드 슬랙스');
   });
 
   it('keeps the current tiles while refreshing the same conditions', async () => {

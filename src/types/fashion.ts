@@ -1,10 +1,15 @@
 export type Product = {
   id: string;
+  /** 카탈로그 상품 id. 화면용 id와 달리 좋아요를 가리키는 키로 쓴다. 없을 수 있다. */
+  itemId?: string | null;
+  source?: 'closet' | 'musinsa';
   brand: string;
   name: string;
   /** 카탈로그 분류. 홈 카테고리 칩이 이 값으로 타일을 거른다. */
   category: string;
   price: string;
+  /** 포맷 전 가격. 좋아요 스냅숏은 숫자를 저장하므로 원본을 함께 들고 간다. */
+  priceValue?: number | null;
   tags: string[];
   imageTone: string;
   imageUrl?: string | null;
@@ -23,6 +28,9 @@ export type OutfitItem = {
   imageTone: string;
   product?: {
     id: string;
+    /** 합성하지 않은 원본 카탈로그 id. 좋아요 키를 만들 때 이것부터 본다. */
+    itemId: string | null;
+    source: 'closet' | 'musinsa';
     brand: string;
     price: number | null;
     imageUrl: string | null;

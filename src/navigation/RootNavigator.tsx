@@ -6,6 +6,7 @@ import { OnboardingIntroScreen } from '../screens/onboarding/OnboardingIntroScre
 import { OnboardingScreen } from '../screens/onboarding/OnboardingScreen';
 import { getMyProfile, profileToAuthUser } from '../services/userService';
 import { useAppStore } from '../store/useAppStore';
+import { useLikesStore } from '../store/useLikesStore';
 import type { RootStackParamList } from '../types/navigation';
 import { AuthNavigator } from './AuthNavigator';
 import { MainTabs } from './MainTabs';
@@ -24,6 +25,9 @@ export function RootNavigator() {
 
   useEffect(() => {
     if (!accessToken) {
+      // 로그아웃했거나 401로 세션이 끊겼다. 앞 사람의 하트가 다음 계정에
+      // 남아 있으면 안 된다.
+      useLikesStore.getState().clear();
       setIsBootstrapping(false);
       return;
     }
@@ -34,6 +38,8 @@ export function RootNavigator() {
           age_range: profile.age_range,
           styles: profile.styles,
         });
+        // 하트 상태는 화면을 막지 않는다. 실패해도 스토어가 조용히 삼킨다.
+        void useLikesStore.getState().hydrate();
       })
       .catch(() => {
         resetSession();

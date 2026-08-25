@@ -4,6 +4,7 @@ import { colors } from '../constants/colors';
 import { fontFamily, fontWeight } from '../constants/typography';
 import { HomeScreen } from '../screens/home/HomeScreen';
 import { ClosetScreen } from '../screens/closet/ClosetScreen';
+import { LikedProductsScreen } from '../screens/likes/LikedProductsScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import type { MainTabParamList } from '../types/navigation';
 import { RecommendNavigator } from './RecommendNavigator';
@@ -43,7 +44,9 @@ export function MainTabs() {
                 ? 'sparkles'
                 : route.name === 'Closet'
                   ? 'shirt'
-                  : 'person';
+                  : route.name === 'Liked'
+                    ? 'heart'
+                    : 'person';
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
@@ -52,6 +55,7 @@ export function MainTabs() {
       <Tab.Screen name="Home" component={HomeScreen} options={{ title: '홈' }} />
       <Tab.Screen name="Recommend" component={RecommendNavigator} options={{ title: '추천' }} />
       <Tab.Screen name="Closet" component={ClosetScreen} options={{ title: '옷장' }} />
+      <Tab.Screen name="Liked" component={LikedProductsScreen} options={{ title: '찜' }} />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: '내 정보' }} />
     </Tab.Navigator>
   );

@@ -23,10 +23,13 @@ function formatPrice(price: number | null): string {
 export function mapProduct(product: ProductResponse, aiRecommended = false): Product {
   return {
     id: product.id,
+    itemId: product.id,
+    source: 'musinsa',
     brand: product.brand,
     name: product.name,
     category: product.category,
     price: formatPrice(product.price),
+    priceValue: product.price,
     tags: product.tags,
     imageTone: '#f5f7fa',
     imageUrl: normalizeAssetUrl(product.image_url),

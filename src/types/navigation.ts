@@ -17,6 +17,7 @@ export type MainTabParamList = {
   Home: undefined;
   Recommend: NavigatorScreenParams<RecommendStackParamList> | undefined;
   Closet: undefined;
+  Liked: undefined;
   Profile: undefined;
 };
 

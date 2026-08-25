@@ -93,6 +93,8 @@ export function mapAgentRecommendation(response: AgentRecommendationResponse): R
       imageTone: '#f5f7fa',
       product: {
         id: item.item_id ?? `${item.source}_${item.item_name ?? Date.now()}`,
+        itemId: item.item_id,
+        source: item.source,
         brand: item.brand ?? item.source,
         price: item.price,
         imageUrl: normalizeAssetUrl(item.image_url),

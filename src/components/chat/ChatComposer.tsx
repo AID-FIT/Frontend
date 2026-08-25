@@ -6,6 +6,7 @@ import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight } from '../../constants/typography';
+import type { ClosetItem } from '../../services/closetService';
 
 // 첨부 버튼 / 입력창 / 전송 버튼이 공유하는 높이.
 const BUTTON_SIZE = 40;
@@ -14,6 +15,8 @@ type ChatComposerProps = {
   value: string;
   attachments: string[];
   pendingAttachmentCount?: number;
+  /** 옷장에서 가져온 옷. 비어 있으면 옷장 전체를 기준으로 답한다. */
+  closetSelection?: ClosetItem[];
   canSend: boolean;
   isSending: boolean;
   isUploading: boolean;
@@ -21,8 +24,10 @@ type ChatComposerProps = {
   canStartNewConversation: boolean;
   onChangeText: (value: string) => void;
   onAttach: () => void;
+  onPickFromCloset?: () => void;
   onNewConversation: () => void;
   onRemoveAttachment: (imageUrl: string) => void;
+  onRemoveClosetItem?: (closetItemId: string) => void;
   onSend: () => void;
 };
 
@@ -30,14 +35,17 @@ export function ChatComposer({
   value,
   attachments,
   pendingAttachmentCount = 0,
+  closetSelection = [],
   canSend,
   isSending,
   isUploading,
   canStartNewConversation,
   onChangeText,
   onAttach,
+  onPickFromCloset,
   onNewConversation,
   onRemoveAttachment,
+  onRemoveClosetItem,
   onSend,
 }: ChatComposerProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -46,6 +54,11 @@ export function ChatComposer({
   const handlePickFromMenu = () => {
     setIsMenuOpen(false);
     onAttach();
+  };
+
+  const handleClosetFromMenu = () => {
+    setIsMenuOpen(false);
+    onPickFromCloset?.();
   };
 
   const handleNewConversationFromMenu = () => {
@@ -79,6 +92,33 @@ export function ChatComposer({
         </View>
       ) : null}
 
+      {closetSelection.length > 0 ? (
+        <View style={styles.closetStrip}>
+          <Text style={styles.closetStripLabel}>옷장에서 가져온 옷</Text>
+          <View style={styles.closetChips}>
+            {closetSelection.map((item) => (
+              <View key={item.id} style={styles.closetChip}>
+                <Image
+                  source={{ uri: item.image_url }}
+                  style={styles.closetChipThumb}
+                  resizeMode="cover"
+                />
+                <Text style={styles.closetChipLabel} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <Pressable
+                  accessibilityLabel={`옷장 선택 해제: ${item.name}`}
+                  onPress={() => onRemoveClosetItem?.(item.id)}
+                  style={({ pressed }) => [styles.closetChipRemove, pressed && styles.removePressed]}
+                >
+                  <Ionicons name="close" size={11} color={colors.subText} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       {isMenuOpen ? (
         <>
           {/* 바깥 아무 곳이나 누르면 닫히도록 위쪽 영역을 덮는다. */}
@@ -95,6 +135,22 @@ export function ChatComposer({
             >
               <Ionicons name="images-outline" size={18} color={colors.primary} />
               <Text style={styles.popoverLabel}>사진 선택하기</Text>
+            </Pressable>
+
+            <View style={styles.popoverDivider} />
+
+            <Pressable
+              accessibilityLabel="옷장에서 가져오기"
+              disabled={!onPickFromCloset}
+              onPress={handleClosetFromMenu}
+              style={({ pressed }) => [
+                styles.popoverItem,
+                pressed && Boolean(onPickFromCloset) && styles.popoverItemPressed,
+                !onPickFromCloset && styles.disabled,
+              ]}
+            >
+              <Ionicons name="shirt-outline" size={18} color={colors.primary} />
+              <Text style={styles.popoverLabel}>옷장에서 가져오기</Text>
             </Pressable>
 
             <View style={styles.popoverDivider} />
@@ -239,6 +295,52 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
+  },
+  closetStrip: {
+    gap: spacing.xs,
+  },
+  closetStripLabel: {
+    color: colors.subText,
+    fontSize: 11,
+    lineHeight: 15,
+    fontFamily: fontFamily.medium,
+    fontWeight: fontWeight.medium,
+  },
+  closetChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  closetChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    maxWidth: 168,
+    paddingRight: spacing.xs,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  closetChipThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceSoft,
+  },
+  closetChipLabel: {
+    flexShrink: 1,
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: fontFamily.semibold,
+    fontWeight: fontWeight.semibold,
+  },
+  closetChipRemove: {
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   thumb: {
     width: 56,

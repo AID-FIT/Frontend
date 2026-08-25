@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ExpandableReason } from '../fashion/ExpandableReason';
 import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
@@ -42,7 +43,9 @@ export function ChatRecommendationList({ items, tips = [] }: ChatRecommendationL
                 style={({ pressed }) => [styles.card, pressed && productUrl ? styles.cardPressed : null]}
               >
                 {imageUrl ? (
-                  <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="cover" />
+                  // 상품 사진은 잘리면 무엇인지 알 수 없다. contain이라 위아래 여백이
+                  // 생기지만 옷 전체가 보인다.
+                  <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="contain" />
                 ) : (
                   <View style={[styles.image, styles.imageFallback]}>
                     <Ionicons name="shirt-outline" size={28} color={colors.primary} />
@@ -57,9 +60,14 @@ export function ChatRecommendationList({ items, tips = [] }: ChatRecommendationL
                     {item.item_name ?? item.category ?? '추천 아이템'}
                   </Text>
                   <Text style={styles.price}>{formatPrice(item.price)}</Text>
-                  <Text style={styles.reason} numberOfLines={3}>
-                    {item.reason}
-                  </Text>
+                  {item.reason ? (
+                    <ExpandableReason
+                      text={item.reason}
+                      collapsedLines={3}
+                      textStyle={styles.reason}
+                      linkSize={11}
+                    />
+                  ) : null}
                 </View>
               </Pressable>
             );
@@ -92,7 +100,7 @@ const styles = StyleSheet.create({
     paddingRight: spacing.lg,
   },
   card: {
-    width: 156,
+    width: 160,
     backgroundColor: colors.white,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -104,7 +112,9 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    height: 132,
+    // 의류 사진은 대개 세로형이다. 고정 높이 대신 비율로 잡아야 카드 폭이
+    // 달라져도 여백 비율이 유지된다.
+    aspectRatio: 3 / 4,
     backgroundColor: colors.surfaceSoft,
   },
   imageFallback: {

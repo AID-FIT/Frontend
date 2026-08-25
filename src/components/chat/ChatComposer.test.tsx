@@ -110,3 +110,72 @@ describe('ChatComposer attach menu', () => {
     expect(findByLabel(tree, '새 대화 시작').props.disabled).toBe(true);
   });
 });
+
+describe('ChatComposer closet selection', () => {
+  const closetItem = {
+    id: 'c1',
+    image_id: 'image-c1',
+    name: '검은 재킷',
+    brand: null,
+    price: null,
+    category: '아우터',
+    sub_category: null,
+    gender: null,
+    image_url: 'https://cdn.aidfit.com/c1.jpg',
+    product_url: null,
+    color: null,
+    material: null,
+    fit: null,
+    pattern: null,
+    mood: null,
+    sense_of_season: null,
+    is_match: true,
+  };
+
+  it('offers the closet next to the photo picker', () => {
+    const tree = render(<ChatComposer {...baseProps()} onPickFromCloset={jest.fn()} />);
+
+    press(findByLabel(tree, '사진 첨부'));
+
+    expect(hasText(tree, '옷장에서 가져오기')).toBe(true);
+  });
+
+  it('opens the closet picker and closes the menu', () => {
+    const onPickFromCloset = jest.fn();
+    const tree = render(<ChatComposer {...baseProps()} onPickFromCloset={onPickFromCloset} />);
+    press(findByLabel(tree, '사진 첨부'));
+
+    press(findByLabel(tree, '옷장에서 가져오기'));
+
+    expect(onPickFromCloset).toHaveBeenCalledTimes(1);
+    expect(hasText(tree, '옷장에서 가져오기')).toBe(false);
+  });
+
+  it('shows nothing above the input until an item is chosen', () => {
+    const tree = render(<ChatComposer {...baseProps()} />);
+
+    expect(hasText(tree, '옷장에서 가져온 옷')).toBe(false);
+  });
+
+  it('lists the chosen clothes above the input', () => {
+    const tree = render(<ChatComposer {...baseProps()} closetSelection={[closetItem]} />);
+
+    expect(hasText(tree, '옷장에서 가져온 옷')).toBe(true);
+    expect(hasText(tree, '검은 재킷')).toBe(true);
+  });
+
+  it('removes a chosen item by its id', () => {
+    const onRemoveClosetItem = jest.fn();
+    const tree = render(
+      <ChatComposer
+        {...baseProps()}
+        closetSelection={[closetItem]}
+        onRemoveClosetItem={onRemoveClosetItem}
+      />,
+    );
+
+    press(findByLabel(tree, '옷장 선택 해제: 검은 재킷'));
+
+    expect(onRemoveClosetItem).toHaveBeenCalledWith('c1');
+  });
+});

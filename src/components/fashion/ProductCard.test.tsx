@@ -98,3 +98,53 @@ describe('ProductCard link', () => {
     expect(Linking.openURL).not.toHaveBeenCalled();
   });
 });
+
+describe('ProductCard image', () => {
+  it('shows the whole garment instead of cropping it', () => {
+    // cover는 위아래를 잘라 무엇인지 알 수 없게 만든다.
+    const tree = render(<ProductCard product={product()} />);
+
+    const image = tree.root.find((node) => node.props.source?.uri === 'https://image.example/item.jpg');
+    expect(image.props.resizeMode).toBe('contain');
+  });
+});
+
+describe('ProductCard reason overflow', () => {
+  const long =
+    '검은 재킷의 각진 어깨선과 대비되도록 밑단이 넓은 슬랙스를 골랐습니다. 톤을 낮춘 회색이라 상의가 강해도 부딪히지 않습니다.';
+
+  // 상품명에도 numberOfLines={2}가 걸려 있다. onLayout이 붙은 쪽이 추천 이유다.
+  function reasonParagraph(tree: renderer.ReactTestRenderer): ReactTestInstance {
+    return tree.root.findAll(
+      (node) => node.props.numberOfLines === 2 && typeof node.props.onLayout === 'function',
+    )[0];
+  }
+
+  it('lets a long reason be opened in full', () => {
+    const tree = render(<ProductCard product={product({ reason: long })} />);
+    const hidden = tree.root.findAll((node) => node.props['aria-hidden'])[0];
+
+    renderer.act(() => {
+      reasonParagraph(tree).props.onLayout({ nativeEvent: { layout: { height: 34 } } });
+      hidden.props.onLayout({ nativeEvent: { layout: { height: 68 } } });
+    });
+
+    const link = tree.root.find((node) => node.props.accessibilityLabel === '추천 이유 전체 보기');
+    renderer.act(() => link.props.onPress());
+
+    expect(textsOf(tree)).toContain('접기');
+  });
+
+  it('leaves a short reason alone', () => {
+    const tree = render(<ProductCard product={product({ reason: '색이 잘 맞아요.' })} />);
+    const paragraph = reasonParagraph(tree);
+    const hidden = tree.root.findAll((node) => node.props['aria-hidden'])[0];
+
+    renderer.act(() => {
+      paragraph.props.onLayout({ nativeEvent: { layout: { height: 17 } } });
+      hidden.props.onLayout({ nativeEvent: { layout: { height: 17 } } });
+    });
+
+    expect(textsOf(tree)).not.toContain('더보기');
+  });
+});

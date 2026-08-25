@@ -5,22 +5,33 @@ import { radius } from '../../constants/radius';
 import { shadows } from '../../constants/shadows';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight } from '../../constants/typography';
+import { outfitItemToLikeable } from '../../services/likeService';
 import type { OutfitItem } from '../../types/fashion';
+import { LikeButton } from './LikeButton';
 
 type OutfitCardProps = {
   item: OutfitItem;
 };
 
 export function OutfitCard({ item }: OutfitCardProps) {
+  const likeable = outfitItemToLikeable(item);
+
   return (
     <View style={styles.card}>
-      {item.product?.imageUrl ? (
-        <Image source={{ uri: item.product.imageUrl }} style={styles.image} resizeMode="cover" />
-      ) : (
-        <View style={[styles.image, { backgroundColor: item.imageTone }]}>
-          <Ionicons name="shirt-outline" size={28} color={colors.primary} />
-        </View>
-      )}
+      <View style={styles.imageWrap}>
+        {item.product?.imageUrl ? (
+          <Image source={{ uri: item.product.imageUrl }} style={styles.image} resizeMode="cover" />
+        ) : (
+          <View style={[styles.image, { backgroundColor: item.imageTone }]}>
+            <Ionicons name="shirt-outline" size={28} color={colors.primary} />
+          </View>
+        )}
+        {likeable ? (
+          <View style={styles.like}>
+            <LikeButton product={likeable} size={12} />
+          </View>
+        ) : null}
+      </View>
       <View style={styles.body}>
         <Text style={styles.category}>{item.category}</Text>
         <Text style={styles.name}>{item.name}</Text>
@@ -39,6 +50,15 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  imageWrap: {
+    width: 82,
+    height: 82,
+  },
+  like: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
   },
   image: {
     width: 82,

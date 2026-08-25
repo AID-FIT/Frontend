@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ExpandableReason } from '../fashion/ExpandableReason';
+import { LikeButton } from '../fashion/LikeButton';
 import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight } from '../../constants/typography';
+import { agentItemToLikeable } from '../../services/likeService';
 import type { AgentRecommendationItem } from '../../services/recommendationService';
 import { normalizeAssetUrl } from '../../utils/url';
 
@@ -42,15 +44,20 @@ export function ChatRecommendationList({ items, tips = [] }: ChatRecommendationL
                 onPress={() => productUrl && Linking.openURL(productUrl)}
                 style={({ pressed }) => [styles.card, pressed && productUrl ? styles.cardPressed : null]}
               >
-                {imageUrl ? (
-                  // 상품 사진은 잘리면 무엇인지 알 수 없다. contain이라 위아래 여백이
-                  // 생기지만 옷 전체가 보인다.
-                  <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="contain" />
-                ) : (
-                  <View style={[styles.image, styles.imageFallback]}>
-                    <Ionicons name="shirt-outline" size={28} color={colors.primary} />
+                <View>
+                  {imageUrl ? (
+                    // 상품 사진은 잘리면 무엇인지 알 수 없다. contain이라 위아래 여백이
+                    // 생기지만 옷 전체가 보인다.
+                    <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="contain" />
+                  ) : (
+                    <View style={[styles.image, styles.imageFallback]}>
+                      <Ionicons name="shirt-outline" size={28} color={colors.primary} />
+                    </View>
+                  )}
+                  <View style={styles.like}>
+                    <LikeButton product={agentItemToLikeable(item)} size={14} />
                   </View>
-                )}
+                </View>
 
                 <View style={styles.body}>
                   <Text style={styles.brand} numberOfLines={1}>
@@ -120,6 +127,11 @@ const styles = StyleSheet.create({
   imageFallback: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  like: {
+    position: 'absolute',
+    top: spacing.xs,
+    right: spacing.xs,
   },
   body: {
     padding: spacing.sm,

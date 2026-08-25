@@ -113,12 +113,16 @@ export function HomeScreen() {
   const recommendationToProducts = useCallback((recommendation: Recommendation, refreshSeed: number): Product[] => (
     recommendation.items.map((item, index) => ({
       id: `${item.product?.id ?? item.id}-${refreshSeed}-${index}`,
+      // 화면용 id에는 새로고침 번호와 순번이 섞여 있어 좋아요 키로 쓸 수 없다.
+      itemId: item.product?.itemId ?? null,
+      source: item.product?.source,
       brand: item.product?.brand ?? 'AID-FIT',
       name: item.name,
       category: item.category,
       price: item.product?.price === null || item.product?.price === undefined
         ? '가격 미정'
         : `${item.product.price.toLocaleString('ko-KR')}원`,
+      priceValue: item.product?.price ?? null,
       tags: [item.category],
       imageTone: item.imageTone,
       imageUrl: item.product?.imageUrl,

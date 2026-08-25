@@ -47,6 +47,8 @@ function recommendation(overrides: Partial<Recommendation> = {}): Recommendation
         imageTone: '#f5f7fa',
         product: {
           id: 'musinsa_1',
+          itemId: 'musinsa_1',
+          source: 'musinsa',
           brand: 'Example',
           price: 59000,
           imageUrl: 'https://image.example/1.jpg',
@@ -137,6 +139,8 @@ function feed(categories: string[]): Recommendation {
       imageTone: '#f5f7fa',
       product: {
         id: `musinsa_${index}`,
+        itemId: `musinsa_${index}`,
+        source: 'musinsa',
         brand: 'Example',
         price: 59000,
         imageUrl: `https://image.example/${index}.jpg`,

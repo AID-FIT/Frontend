@@ -4,9 +4,11 @@ import { colors } from '../../constants/colors';
 import { radius } from '../../constants/radius';
 import { spacing } from '../../constants/spacing';
 import { fontFamily, fontWeight } from '../../constants/typography';
+import { productToLikeable } from '../../services/likeService';
 import type { Product } from '../../types/fashion';
 import { AIRecommendBadge } from './AIRecommendBadge';
 import { ExpandableReason } from './ExpandableReason';
+import { LikeButton } from './LikeButton';
 
 type ProductCardProps = {
   product: Product;
@@ -37,6 +39,11 @@ export function ProductCard({ product }: ProductCardProps) {
             <AIRecommendBadge />
           </View>
         ) : null}
+        {/* 카드 전체가 상품 페이지로 가는 Pressable이지만, 안쪽 Pressable이
+            터치를 먼저 가져가므로 하트를 눌러도 페이지가 열리지 않는다. */}
+        <View style={styles.like}>
+          <LikeButton product={productToLikeable(product)} />
+        </View>
       </View>
       <View style={styles.body}>
         <Text style={styles.brand} numberOfLines={1}>
@@ -104,6 +111,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.md,
     left: spacing.md,
+  },
+  like: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
   },
   body: {
     padding: spacing.md,
